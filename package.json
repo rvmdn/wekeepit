@@ -1,7 +1,7 @@
 {
   "name": "wekeepit",
-  "version": "1.0.0",
-  "description": "Lightweight Card Board & Notepad Desktop Tool with Dynamic Metadata and Multi-Tag Filtering",
+  "version": "1.2.0",
+  "description": "Portable Card Notepad, Notice Board & Document Vault with Full-Text Search (PDF, Word, Excel)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

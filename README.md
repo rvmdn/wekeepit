@@ -39,6 +39,13 @@ Aplikasi desktop super ringan bergaya **Card / Papan Pengumuman** dengan dukunga
    - Konsumsi RAM sangat minim (~15MB-30MB).
    - Tersedia tombol ekspor & impor JSON cadangan.
 
+6. **Document Vault & Full-Text Search (v1.2)** 📁
+   - **Simpan Dokumen**: Lampirkan berkas dokumen **PDF (`.pdf`)**, **Word (`.docx`)**, **Excel (`.xlsx`, `.xls`, `.csv`)**, atau **Teks (`.txt`, `.md`, `.json`)** langsung ke dalam kartu catatan.
+   - **Pencarian Teks Penuh (Full-Text Search)**: Ketika mengetik di kolom pencarian atau filter tag, sistem otomatis memindai seluruh isi dokumen lampiran.
+   - **Smart Snippet Preview**: Menampilkan cuplikan 1–4 kalimat dari isi dokumen yang cocok dengan kata kunci pencarian (dilengkapi highlight kuning).
+   - **Viewer & Downloader**: Buka dan baca isi teks dokumen langsung di modal tanpa perlu membuka Microsoft Office/Adobe, serta unduh kembali berkas aslinya kapan saja.
+   - **100% Offline**: Menggunakan library client-side (`pdf.js`, `mammoth.js`, `xlsx.js`) yang tersimpan lokal di dalam folder `lib/`.
+
 ---
 
 ## 🚀 Cara Menjalankan

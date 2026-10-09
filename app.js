@@ -15,6 +15,7 @@
 
   // Instances
   const metaEngine = new MetadataEngine();
+  const docEngine = new DocumentEngine();
   const reminderService = new ReminderService(
     handleReminderTriggered,
     handleCardUpdated
@@ -39,6 +40,7 @@
   // Tab counts
   const countAll = document.getElementById('countAll');
   const countPinned = document.getElementById('countPinned');
+  const countDocuments = document.getElementById('countDocuments');
   const countReminders = document.getElementById('countReminders');
   const countChecklist = document.getElementById('countChecklist');
   const pinnedBadge = document.getElementById('pinnedBadge');
@@ -63,6 +65,28 @@
   const reminderDateTime = document.getElementById('reminderDateTime');
   const reminderRepeat = document.getElementById('reminderRepeat');
 
+  // Document Vault DOM Elements
+  const toggleAttachments = document.getElementById('toggleAttachments');
+  const attachmentsCountPreview = document.getElementById('attachmentsCountPreview');
+  const attachmentDropZone = document.getElementById('attachmentDropZone');
+  const documentFileInput = document.getElementById('documentFileInput');
+  const triggerDocUploadBtn = document.getElementById('triggerDocUploadBtn');
+  const attachmentExtractingIndicator = document.getElementById('attachmentExtractingIndicator');
+  const extractingStatusText = document.getElementById('extractingStatusText');
+  const attachmentsEditorList = document.getElementById('attachmentsEditorList');
+
+  // Document Viewer Modal DOM Elements
+  const docViewerModal = document.getElementById('docViewerModal');
+  const docViewerTitle = document.getElementById('docViewerTitle');
+  const docViewerIcon = document.getElementById('docViewerIcon');
+  const docViewerMeta = document.getElementById('docViewerMeta');
+  const docViewerContent = document.getElementById('docViewerContent');
+  const closeDocViewerModal = document.getElementById('closeDocViewerModal');
+  const closeDocViewerModalBtn = document.getElementById('closeDocViewerModalBtn');
+  const copyDocTextBtn = document.getElementById('copyDocTextBtn');
+  const downloadDocFileBtn = document.getElementById('downloadDocFileBtn');
+  let activeViewerDoc = null;
+
   const schemaModal = document.getElementById('schemaModal');
   const schemaFieldsList = document.getElementById('schemaFieldsList');
   const dataModal = document.getElementById('dataModal');
@@ -70,6 +94,7 @@
 
   // Form State
   let editingChecklist = [];
+  let editingAttachments = [];
   let selectedColor = '#6366f1';
 
   // --- INITIALIZATION ---
@@ -427,7 +452,42 @@
     // Collapsibles in card editor
     setupCollapsible('toggleMetadataFields');
     setupCollapsible('toggleChecklist');
+    setupCollapsible('toggleAttachments');
     setupCollapsible('toggleReminder');
+
+    // Document Upload & Drop Zone
+    if (triggerDocUploadBtn && documentFileInput) {
+      triggerDocUploadBtn.addEventListener('click', () => documentFileInput.click());
+      documentFileInput.addEventListener('change', handleDocumentFileInputChange);
+    }
+
+    if (attachmentDropZone) {
+      attachmentDropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        attachmentDropZone.classList.add('dragover');
+      });
+      attachmentDropZone.addEventListener('dragleave', () => {
+        attachmentDropZone.classList.remove('dragover');
+      });
+      attachmentDropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        attachmentDropZone.classList.remove('dragover');
+        if (e.dataTransfer && e.dataTransfer.files) {
+          handleDocumentFiles(Array.from(e.dataTransfer.files));
+        }
+      });
+    }
+
+    // Document Viewer Modal Actions
+    if (closeDocViewerModal) closeDocViewerModal.addEventListener('click', () => { docViewerModal.style.display = 'none'; });
+    if (closeDocViewerModalBtn) closeDocViewerModalBtn.addEventListener('click', () => { docViewerModal.style.display = 'none'; });
+    if (docViewerModal) {
+      docViewerModal.addEventListener('click', (e) => {
+        if (e.target === docViewerModal) docViewerModal.style.display = 'none';
+      });
+    }
+    if (copyDocTextBtn) copyDocTextBtn.addEventListener('click', copyActiveViewerDocText);
+    if (downloadDocFileBtn) downloadDocFileBtn.addEventListener('click', downloadActiveViewerDocFile);
 
     // Color swatches selection
     colorPickerPalette.querySelectorAll('.color-swatch').forEach(swatch => {
@@ -587,6 +647,9 @@
     if (currentTab === 'pinned') {
       filtered = filtered.filter(c => c.pinned);
       cardsSectionTitle.textContent = '📌 Disematkan';
+    } else if (currentTab === 'documents') {
+      filtered = filtered.filter(c => Array.isArray(c.attachments) && c.attachments.length > 0);
+      cardsSectionTitle.textContent = '📁 Dokumen Terlampir';
     } else if (currentTab === 'reminders') {
       filtered = filtered.filter(c => c.reminder && c.reminder.datetime);
       cardsSectionTitle.textContent = '⏰ Reminder';
@@ -709,6 +772,9 @@
     // Dynamic Metadata
     const metadataBox = createMetadataBox(card.metadata);
 
+    // Document Attachments & Smart Snippet Preview
+    const attachmentsBox = createAttachmentsBox(card);
+
     // Checklist
     const checklistBox = createChecklistBox(card);
 
@@ -719,6 +785,7 @@
     cardEl.appendChild(headerEl);
     if (card.tags && card.tags.length > 0) cardEl.appendChild(tagsEl);
     if (card.content) cardEl.appendChild(contentEl);
+    if (attachmentsBox) cardEl.appendChild(attachmentsBox);
     if (metadataBox) cardEl.appendChild(metadataBox);
     if (checklistBox) cardEl.appendChild(checklistBox);
     cardEl.appendChild(footerEl);
@@ -848,6 +915,79 @@
     return box;
   }
 
+  function createAttachmentsBox(card) {
+    if (!Array.isArray(card.attachments) || card.attachments.length === 0) {
+      return null;
+    }
+
+    const box = document.createElement('div');
+    box.className = 'card-attachments';
+
+    card.attachments.forEach(att => {
+      const meta = docEngine.getFileMeta(att.name);
+      const snippetData = docEngine.getSnippet(att.textCorpus, searchQuery, 3);
+
+      const docCard = document.createElement('div');
+      docCard.className = 'doc-item-card';
+
+      const header = document.createElement('div');
+      header.className = 'doc-item-header';
+
+      const titleGroup = document.createElement('div');
+      titleGroup.className = 'doc-item-title-group';
+      titleGroup.innerHTML = `
+        <span class="doc-type-badge doc-type-${meta.type || meta.label.toLowerCase()}">${meta.icon} ${meta.label}</span>
+        <span class="doc-item-filename" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
+        <span class="doc-item-meta">${docEngine.formatSize(att.size)}${att.countInfo ? ' • ' + escapeHtml(att.countInfo) : ''}</span>
+      `;
+
+      const actions = document.createElement('div');
+      actions.className = 'doc-item-actions';
+
+      const viewBtn = document.createElement('button');
+      viewBtn.type = 'button';
+      viewBtn.className = 'btn-doc-action';
+      viewBtn.innerHTML = '👁️ Baca Teks';
+      viewBtn.title = 'Buka & Baca teks dokumen lengkap';
+      viewBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDocViewerModal(att);
+      });
+
+      const dlBtn = document.createElement('button');
+      dlBtn.type = 'button';
+      dlBtn.className = 'btn-doc-action';
+      dlBtn.innerHTML = '⬇️ Unduh';
+      dlBtn.title = 'Unduh dokumen asli';
+      dlBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        downloadAttachment(att);
+      });
+
+      actions.appendChild(viewBtn);
+      actions.appendChild(dlBtn);
+      header.appendChild(titleGroup);
+      header.appendChild(actions);
+      docCard.appendChild(header);
+
+      // Snippet preview (1-4 sentences)
+      if (att.textCorpus) {
+        const snippetBox = document.createElement('div');
+        snippetBox.className = `doc-snippet-box ${snippetData.hasMatch ? 'has-match' : ''}`;
+        const highlightedHtml = docEngine.renderHighlightedSnippet(snippetData.snippet, searchQuery);
+        const prefix = snippetData.hasMatch
+          ? '🔍 <strong>Ditemukan dalam dokumen:</strong> '
+          : '💬 <strong>Cuplikan isi:</strong> ';
+        snippetBox.innerHTML = prefix + highlightedHtml;
+        docCard.appendChild(snippetBox);
+      }
+
+      box.appendChild(docCard);
+    });
+
+    return box;
+  }
+
   function createCardFooter(card) {
     const footer = document.createElement('div');
     footer.className = 'card-footer';
@@ -880,6 +1020,7 @@
   function updateTabCounts() {
     countAll.textContent = cards.length;
     countPinned.textContent = cards.filter(c => c.pinned).length;
+    if (countDocuments) countDocuments.textContent = cards.filter(c => Array.isArray(c.attachments) && c.attachments.length > 0).length;
     countReminders.textContent = cards.filter(c => c.reminder && c.reminder.datetime).length;
     countChecklist.textContent = cards.filter(c => Array.isArray(c.checklist) && c.checklist.length > 0).length;
   }
@@ -888,6 +1029,7 @@
   function openCardModal(card = null) {
     cardForm.reset();
     editingChecklist = [];
+    editingAttachments = [];
     selectedColor = '#6366f1';
 
     // Reset palette
@@ -915,6 +1057,10 @@
         editingChecklist = JSON.parse(JSON.stringify(card.checklist));
       }
 
+      if (Array.isArray(card.attachments)) {
+        editingAttachments = JSON.parse(JSON.stringify(card.attachments));
+      }
+
       if (card.reminder) {
         reminderDateTime.value = card.reminder.datetime ? card.reminder.datetime.slice(0, 16) : '';
         reminderRepeat.value = card.reminder.repeat || 'none';
@@ -925,6 +1071,7 @@
     }
 
     renderChecklistEditor();
+    renderAttachmentsEditor();
     cardModal.style.display = 'flex';
     formTitle.focus();
   }
@@ -1102,6 +1249,7 @@
       tags,
       metadata,
       checklist: editingChecklist.filter(c => c.text && c.text.trim()),
+      attachments: editingAttachments,
       reminder,
       updatedAt: new Date().toISOString()
     };
@@ -1122,6 +1270,133 @@
     await saveCards();
     closeCardModal();
     renderAll();
+  }
+
+  // --- DOCUMENT ATTACHMENTS & VAULT LOGIC ---
+  function renderAttachmentsEditor() {
+    if (!attachmentsEditorList) return;
+    attachmentsEditorList.innerHTML = '';
+    if (attachmentsCountPreview) {
+      attachmentsCountPreview.textContent = editingAttachments.length;
+    }
+
+    if (editingAttachments.length === 0) {
+      return;
+    }
+
+    editingAttachments.forEach((att, index) => {
+      const meta = docEngine.getFileMeta(att.name);
+      const row = document.createElement('div');
+      row.className = 'attachment-editor-item';
+      row.innerHTML = `
+        <div class="attachment-editor-left">
+          <span class="doc-type-badge doc-type-${meta.type || meta.label.toLowerCase()}">${meta.icon} ${meta.label}</span>
+          <span class="attachment-editor-filename" title="${escapeHtml(att.name)}">${escapeHtml(att.name)}</span>
+          <span class="attachment-editor-info">(${docEngine.formatSize(att.size)}${att.countInfo ? ' • ' + escapeHtml(att.countInfo) : ''}${att.wordCount ? ' • ' + att.wordCount.toLocaleString() + ' kata' : ''})</span>
+        </div>
+        <button type="button" class="btn-remove-attachment" data-index="${index}" title="Hapus lampiran">✕</button>
+      `;
+
+      row.querySelector('.btn-remove-attachment').addEventListener('click', () => {
+        editingAttachments.splice(index, 1);
+        renderAttachmentsEditor();
+      });
+
+      attachmentsEditorList.appendChild(row);
+    });
+  }
+
+  async function handleDocumentFileInputChange(e) {
+    if (e.target.files && e.target.files.length > 0) {
+      await handleDocumentFiles(Array.from(e.target.files));
+      e.target.value = '';
+    }
+  }
+
+  async function handleDocumentFiles(files) {
+    if (!files || files.length === 0) return;
+
+    if (attachmentExtractingIndicator) {
+      attachmentExtractingIndicator.style.display = 'flex';
+    }
+
+    for (const file of files) {
+      if (extractingStatusText) {
+        extractingStatusText.textContent = `Mengekstrak isi ${file.name}...`;
+      }
+      try {
+        const extracted = await docEngine.extractText(file);
+        const base64Data = await docEngine.readFileAsBase64(file);
+
+        editingAttachments.push({
+          id: 'doc-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          name: file.name,
+          size: file.size,
+          type: docEngine.getFileType(file.name),
+          countInfo: extracted.countInfo,
+          textCorpus: extracted.textCorpus,
+          charCount: extracted.charCount,
+          wordCount: extracted.wordCount,
+          data: base64Data
+        });
+      } catch (err) {
+        console.error('Gagal mengekstrak berkas:', file.name, err);
+        alertToast(`Gagal mengekstrak: ${file.name}`);
+      }
+    }
+
+    if (attachmentExtractingIndicator) {
+      attachmentExtractingIndicator.style.display = 'none';
+    }
+    renderAttachmentsEditor();
+  }
+
+  function openDocViewerModal(att) {
+    if (!docViewerModal) return;
+    activeViewerDoc = att;
+    const meta = docEngine.getFileMeta(att.name);
+
+    if (docViewerTitle) docViewerTitle.textContent = att.name;
+    if (docViewerIcon) docViewerIcon.textContent = meta.icon;
+
+    const sizeStr = docEngine.formatSize(att.size);
+    const wordStr = att.wordCount ? `${att.wordCount.toLocaleString()} Kata` : '';
+    const charStr = att.charCount ? `${att.charCount.toLocaleString()} Karakter` : '';
+    const infoParts = [meta.label, sizeStr, att.countInfo, wordStr, charStr].filter(Boolean);
+    if (docViewerMeta) docViewerMeta.textContent = infoParts.join(' • ');
+
+    if (docViewerContent) {
+      docViewerContent.textContent = att.textCorpus || 'Isi dokumen kosong atau tidak terdeteksi teks.';
+    }
+    docViewerModal.style.display = 'flex';
+  }
+
+  function copyActiveViewerDocText() {
+    if (!activeViewerDoc || !activeViewerDoc.textCorpus) return;
+    navigator.clipboard.writeText(activeViewerDoc.textCorpus).then(() => {
+      alertToast('Isi dokumen berhasil disalin ke clipboard!');
+    }).catch(() => {
+      alertToast('Gagal menyalin ke clipboard.');
+    });
+  }
+
+  function downloadActiveViewerDocFile() {
+    if (!activeViewerDoc) return;
+    downloadAttachment(activeViewerDoc);
+  }
+
+  function downloadAttachment(att) {
+    if (!att || !att.data) {
+      alertToast('Data file tidak tersedia untuk diunduh.');
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = att.data;
+    link.download = att.name || 'dokumen';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   // --- SCHEMA MODAL ---

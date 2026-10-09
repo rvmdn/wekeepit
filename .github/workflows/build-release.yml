@@ -46,29 +46,31 @@ jobs:
       - name: Assemble Portable Package
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path ./package/WeKeepIt-v1.1-Portable -Force
-          Copy-Item -Path ./build-output/* -Destination ./package/WeKeepIt-v1.1-Portable -Recurse -Force
+          $ver = if ("${{ github.ref_name }}" -match "^v") { "${{ github.ref_name }}" } else { "v1.2" }
+          $pkgDir = "./package/WeKeepIt-$ver-Portable"
+          New-Item -ItemType Directory -Path $pkgDir -Force
+          Copy-Item -Path ./build-output/* -Destination $pkgDir -Recurse -Force
           
           # Include sample data if not generated
-          if (-not (Test-Path "./package/WeKeepIt-v1.1-Portable/wekeepit-data.json")) {
-            Copy-Item "wekeepit-data.sample.json" "./package/WeKeepIt-v1.1-Portable/wekeepit-data.json"
+          if (-not (Test-Path "$pkgDir/wekeepit-data.json")) {
+            Copy-Item "wekeepit-data.sample.json" "$pkgDir/wekeepit-data.json"
           }
 
           # Compress to portable zip
-          Compress-Archive -Path ./package/WeKeepIt-v1.1-Portable -DestinationPath ./WeKeepIt-v1.1-Portable.zip -Force
+          Compress-Archive -Path $pkgDir -DestinationPath "./WeKeepIt-$ver-Portable.zip" -Force
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WeKeepIt-v1.1-Portable
-          path: WeKeepIt-v1.1-Portable.zip
+          name: WeKeepIt-Portable-Release
+          path: WeKeepIt-*-Portable.zip
           retention-days: 14
 
       - name: Create GitHub Release (On Tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: WeKeepIt-v1.1-Portable.zip
+          files: WeKeepIt-*-Portable.zip
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false

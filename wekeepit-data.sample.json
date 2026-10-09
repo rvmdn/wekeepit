@@ -35,5 +35,34 @@
     "reminder": null,
     "updatedAt": "2026-10-09T00:00:00.000Z",
     "createdAt": "2026-10-09T00:00:00.000Z"
+  },
+  {
+    "id": "card-sample-3",
+    "title": "Pedoman Kebijakan & SOP IT",
+    "content": "Dokumen standar operasional prosedur terkait akses jaringan, token otentikasi VPN, dan keamanan data.",
+    "color": "#06b6d4",
+    "pinned": false,
+    "tags": ["sop", "vpn", "kebijakan", "dokumen"],
+    "metadata": {
+      "pic": "IT Security Lead",
+      "priority": "High"
+    },
+    "attachments": [
+      {
+        "id": "att-sample-1",
+        "name": "SOP_Akses_Jaringan_VPN.docx",
+        "size": 34816,
+        "type": "docx",
+        "countInfo": "Dokumen Word",
+        "wordCount": 185,
+        "charCount": 1150,
+        "textCorpus": "STANDAR OPERASIONAL PROSEDUR AKSES JARINGAN DAN TOKEN VPN.\nSetiap pegawai atau konsultan yang bekerja secara remote wajib menggunakan token VPN terdaftar sebelum mengakses sistem internal. Otentikasi dua faktor (MFA) wajib diaktifkan. Masa berlaku sesi login adalah 8 jam kerja. Dilarang membagikan kredensial akun kepada pihak yang tidak berwenang.",
+        "data": "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,UEsDBBQAAAA="
+      }
+    ],
+    "checklist": [],
+    "reminder": null,
+    "updatedAt": "2026-10-09T00:00:00.000Z",
+    "createdAt": "2026-10-09T00:00:00.000Z"
   }
 ]

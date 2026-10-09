@@ -104,7 +104,7 @@ public partial class Form1 : Form
 
     private void SetupWindow()
     {
-        this.Text = "WeKeepIt v1.1 - Desktop Card Notepad";
+        this.Text = "WeKeepIt v1.2 - Desktop Card Notepad & Document Vault";
         this.Size = new Size(1280, 840);
         this.MinimumSize = new Size(540, 420);
         this.StartPosition = FormStartPosition.CenterScreen;
@@ -157,7 +157,7 @@ public partial class Form1 : Form
 
         notifyIcon = new NotifyIcon
         {
-            Text = "WeKeepIt v1.1 - Card Notepad",
+            Text = "WeKeepIt v1.2 - Card Notepad & Vault",
             Icon = this.Icon ?? SystemIcons.Application,
             ContextMenuStrip = trayMenu,
             Visible = true

@@ -146,7 +146,16 @@ class MetadataEngine {
       checklistCorpus = card.checklist.map(c => c.text || '').join(' ').toLowerCase();
     }
 
-    const fullCorpus = `${cardTitle} ${cardContent} ${metadataCorpus} ${checklistCorpus} ${cardTags.join(' ')}`;
+    // Attachments & document text corpus (PDF, DOCX, XLSX, TXT)
+    let attachmentsCorpus = '';
+    if (Array.isArray(card.attachments) && card.attachments.length > 0) {
+      attachmentsCorpus = card.attachments
+        .map(att => `${att.name || ''} ${att.type || ''} ${att.textCorpus || ''}`)
+        .join(' ')
+        .toLowerCase();
+    }
+
+    const fullCorpus = `${cardTitle} ${cardContent} ${metadataCorpus} ${checklistCorpus} ${attachmentsCorpus} ${cardTags.join(' ')}`;
 
     // Mode: AND_TAGS (e.g. link+role)
     if (parsedQuery.mode === 'AND_TAGS') {
