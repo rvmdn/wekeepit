@@ -833,6 +833,48 @@ body {
   flex-shrink: 0;
 }
 
+/* Card Type Selector (Mau Simpan Apa?) */
+.card-type-selector-box {
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.2rem;
+}
+
+.type-selector-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #a5b4fc !important;
+  letter-spacing: 0.2px;
+}
+
+.card-type-select {
+  background: var(--bg-surface-elevated);
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-main);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  outline: none;
+  transition: var(--transition-fast);
+}
+
+.card-type-select:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-surface-hover);
+}
+
+.card-type-select:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
 /* Forms */
 .form-row {
   display: flex;

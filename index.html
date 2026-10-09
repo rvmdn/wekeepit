@@ -148,6 +148,19 @@
         <div class="modal-body">
           <input type="hidden" id="editCardId">
 
+          <!-- Dropdown Tipe Catatan: Mau Simpan Apa? -->
+          <div class="form-group card-type-selector-box">
+            <label for="cardTypeSelect" class="form-label type-selector-label">Mau simpan apa?</label>
+            <select id="cardTypeSelect" class="form-select card-type-select">
+              <option value="note">📝 Catatan & Teks Bebas</option>
+              <option value="link">🔗 Tautan & Akses (Link, Role, PIC)</option>
+              <option value="document">📁 Lampiran Dokumen (PDF, Word, Excel)</option>
+              <option value="checklist">✅ Checklist Aktivitas (To-Do List)</option>
+              <option value="reminder">⏰ Pengingat Jadwal (Reminder)</option>
+              <option value="all">🌟 Lengkap (Semua Fitur)</option>
+            </select>
+          </div>
+
           <div class="form-row">
             <div class="form-group flex-1">
               <label for="formTitle" class="form-label">Judul *</label>
@@ -162,8 +175,9 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label for="formContent" class="form-label">Isi Catatan</label>
+          <!-- Section: Isi Catatan (Textarea) -->
+          <div class="form-group" id="formContentGroup">
+            <label for="formContent" class="form-label">Isi Catatan / Deskripsi</label>
             <textarea id="formContent" class="form-textarea" rows="3" placeholder="Tulis catatan, teks, atau ringkasan di sini..."></textarea>
           </div>
 
@@ -189,17 +203,17 @@
             <div class="tag-suggestions" id="tagSuggestions"></div>
           </div>
 
-          <!-- Dynamic Metadata Section -->
-          <div class="form-group-collapsible">
+          <!-- Section: Dynamic Metadata (Link/Role/PIC) -->
+          <div class="form-group-collapsible" id="metadataCollapsible">
             <div class="collapsible-header" id="toggleMetadataFields">
-              <span>⚙️ Metadata Kustom</span>
+              <span>🔗 Metadata Kustom (Link, Role, PIC)</span>
               <span class="collapsible-toggle-icon">▼</span>
             </div>
             <div class="collapsible-body" id="metadataFieldsContainer"></div>
           </div>
 
-          <!-- Checklist / Subtasks -->
-          <div class="form-group-collapsible">
+          <!-- Section: Checklist / Subtasks -->
+          <div class="form-group-collapsible" id="checklistCollapsible">
             <div class="collapsible-header" id="toggleChecklist">
               <span>✅ Checklist Aktivitas (<span id="checklistCountPreview">0</span>)</span>
               <span class="collapsible-toggle-icon">▼</span>
@@ -213,10 +227,10 @@
             </div>
           </div>
 
-          <!-- Document Attachments Section -->
-          <div class="form-group-collapsible">
+          <!-- Section: Document Attachments -->
+          <div class="form-group-collapsible" id="attachmentsCollapsible">
             <div class="collapsible-header" id="toggleAttachments">
-              <span>📎 Lampiran Dokumen (<span id="attachmentsCountPreview">0</span>)</span>
+              <span>📁 Lampiran Dokumen (<span id="attachmentsCountPreview">0</span>)</span>
               <span class="collapsible-toggle-icon">▼</span>
             </div>
             <div class="collapsible-body" id="attachmentsContainer">
@@ -234,8 +248,8 @@
             </div>
           </div>
 
-          <!-- Reminder -->
-          <div class="form-group-collapsible">
+          <!-- Section: Reminder -->
+          <div class="form-group-collapsible" id="reminderCollapsible">
             <div class="collapsible-header" id="toggleReminder">
               <span>⏰ Pengingat (Reminder)</span>
               <span class="collapsible-toggle-icon">▼</span>
