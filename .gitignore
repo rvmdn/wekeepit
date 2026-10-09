@@ -1,0 +1,27 @@
+# Sensitive User Data & Personal Notes
+wekeepit-data.json
+save_error.log
+startup_error.log
+
+# .NET & Visual Studio build outputs
+bin/
+obj/
+desktop-app/bin/
+desktop-app/obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+
+# WebView2 Runtime cache
+WebView2Profile/
+EBWebView/
+
+# Pre-packaged local binary folders (Artifacts will be built by GitHub Actions)
+WeKeepIt-v1.0-Portable/
+WeKeepIt-v1.1-Portable/
+
+# OS specific files
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store

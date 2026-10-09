@@ -1,0 +1,22 @@
+{
+  "name": "wekeepit",
+  "version": "1.0.0",
+  "description": "Lightweight Card Board & Notepad Desktop Tool with Dynamic Metadata and Multi-Tag Filtering",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "launch-desktop.bat"
+  },
+  "keywords": [
+    "desktop",
+    "notepad",
+    "sticky-notes",
+    "cards",
+    "tags",
+    "metadata",
+    "board",
+    "reminder"
+  ],
+  "author": "Antigravity",
+  "license": "MIT"
+}

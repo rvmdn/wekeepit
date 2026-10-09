@@ -1,0 +1,48 @@
+{
+  "fields": [
+    {
+      "key": "url",
+      "label": "Link / URL",
+      "type": "url",
+      "icon": "🔗",
+      "placeholder": "https://example.com"
+    },
+    {
+      "key": "role",
+      "label": "Role / Akses",
+      "type": "badge",
+      "icon": "👤",
+      "placeholder": "Maker, Checker, Admin, etc."
+    },
+    {
+      "key": "environment",
+      "label": "Environment",
+      "type": "select",
+      "icon": "🌐",
+      "options": ["Development", "Staging", "Production", "UAT", "Local"]
+    },
+    {
+      "key": "priority",
+      "label": "Prioritas",
+      "type": "select",
+      "icon": "🔥",
+      "options": ["Low", "Medium", "High", "Critical"]
+    },
+    {
+      "key": "pic",
+      "label": "PIC / Penanggung Jawab",
+      "type": "text",
+      "icon": "🏷️",
+      "placeholder": "Nama rekan kerja / tim"
+    }
+  ],
+  "tagPalette": {
+    "link": "#3b82f6",
+    "role": "#8b5cf6",
+    "harian": "#10b981",
+    "reminder": "#f59e0b",
+    "pengumuman": "#ef4444",
+    "internal": "#06b6d4",
+    "api": "#6366f1"
+  }
+}

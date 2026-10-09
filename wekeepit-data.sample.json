@@ -1,0 +1,39 @@
+[
+  {
+    "id": "card-sample-1",
+    "title": "Selamat Datang di WeKeepIt 📌",
+    "content": "Aplikasi Card Notepad & Board fleksibel dengan multi-tag filtering, dynamic metadata, dan daily checklist.",
+    "color": "#6366f1",
+    "pinned": true,
+    "tags": ["pengumuman", "welcome"],
+    "metadata": {
+      "priority": "High"
+    },
+    "checklist": [
+      { "id": "chk-1", "text": "Coba buat catatan baru (+ Catatan)", "done": true },
+      { "id": "chk-2", "text": "Eksplorasi filter multi-tag (contoh: link+role)", "done": false },
+      { "id": "chk-3", "text": "Atur reminder harian", "done": false }
+    ],
+    "reminder": null,
+    "updatedAt": "2026-10-09T00:00:00.000Z",
+    "createdAt": "2026-10-09T00:00:00.000Z"
+  },
+  {
+    "id": "card-sample-2",
+    "title": "Portal Dokumentasi Proyek",
+    "content": "Akses dokumentasi teknis dan repositori proyek.",
+    "color": "#10b981",
+    "pinned": false,
+    "tags": ["link", "role", "docs"],
+    "metadata": {
+      "url": "https://github.com",
+      "role": "Developer",
+      "environment": "Development",
+      "priority": "Medium"
+    },
+    "checklist": [],
+    "reminder": null,
+    "updatedAt": "2026-10-09T00:00:00.000Z",
+    "createdAt": "2026-10-09T00:00:00.000Z"
+  }
+]

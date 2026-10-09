@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WeKeepIt v1.1 - Desktop Card Notepad</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📌</text></svg>">
+</head>
+<body class="theme-dark">
+  <div class="app-container" id="appContainer">
+    <!-- Slim Header (Notepad-like) -->
+    <header class="app-header">
+      <div class="header-left">
+        <div class="logo-group">
+          <span class="logo-icon">📌</span>
+          <h1 class="logo-text">WeKeepIt</h1>
+          <span class="version-tag">v1.1</span>
+        </div>
+      </div>
+
+      <div class="header-center">
+        <!-- Clean Search Bar -->
+        <div class="search-box-wrapper">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            id="searchInput" 
+            class="search-input" 
+            placeholder="Cari teks atau filter tag (contoh: link+role)..." 
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <button id="clearSearchBtn" class="clear-search-btn" title="Hapus pencarian" style="display: none;">✕</button>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <button id="newCardBtn" class="btn btn-primary">
+          <span>➕</span> Catatan Baru
+        </button>
+        <button id="themeToggleBtn" class="btn btn-secondary" title="Alihkan Tema: Dark Solid / Transparan Glass">
+          <span>✨</span> <span id="themeLabel">Transparan</span>
+        </button>
+        <button id="widgetModeBtn" class="btn btn-secondary" title="Mode Widget Ringkas">
+          <span>🪟</span> <span class="btn-label">Widget</span>
+        </button>
+        <button id="manageSchemaBtn" class="btn btn-icon-only" title="Kelola Metadata">
+          ⚙️
+        </button>
+        <button id="exportImportBtn" class="btn btn-icon-only" title="Cadangkan / Ekspor JSON">
+          💾
+        </button>
+      </div>
+    </header>
+
+    <!-- Clean Quick Tag Bar (Auto-hides if no tags) -->
+    <section class="tag-bar-section" id="tagBarSection" style="display: none;">
+      <div class="tag-chips-container" id="tagChipsContainer"></div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <div class="tab-buttons">
+        <button class="nav-tab active" data-tab="all">
+          Semua <span class="tab-count" id="countAll">0</span>
+        </button>
+        <button class="nav-tab" data-tab="pinned">
+          📌 Disematkan <span class="tab-count" id="countPinned">0</span>
+        </button>
+        <button class="nav-tab" data-tab="reminders">
+          ⏰ Reminder <span class="tab-count" id="countReminders">0</span>
+        </button>
+        <button class="nav-tab" data-tab="checklist">
+          ✅ Checklist <span class="tab-count" id="countChecklist">0</span>
+        </button>
+      </div>
+
+      <div class="nav-spacer"></div>
+
+      <div class="view-density-toggle">
+        <button class="density-btn active" data-density="normal">Grid</button>
+        <button class="density-btn" data-density="compact">Kompak</button>
+      </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Active Query Notice -->
+      <div id="filterNotice" class="filter-notice" style="display: none;">
+        <span>Filter aktif: <strong id="filterQueryDisplay"></strong></span>
+        <button id="resetFilterBtn" class="reset-filter-btn">Hapus Filter</button>
+      </div>
+
+      <!-- Pinned Cards Section -->
+      <section class="board-section" id="pinnedSection" style="display: none;">
+        <div class="section-header">
+          <h2 class="section-title">📌 Disematkan</h2>
+          <span class="section-badge" id="pinnedBadge">0</span>
+        </div>
+        <div class="card-grid" id="pinnedGrid"></div>
+      </section>
+
+      <!-- All Cards Section -->
+      <section class="board-section" id="cardsSection">
+        <div class="section-header" id="cardsSectionHeader" style="display: none;">
+          <h2 class="section-title" id="cardsSectionTitle">📋 Catatan</h2>
+          <span class="section-badge" id="cardsBadge">0</span>
+        </div>
+        <div class="card-grid" id="cardsGrid"></div>
+      </section>
+
+      <!-- Clean Notepad Empty State -->
+      <div id="emptyState" class="empty-state">
+        <div class="empty-icon">📝</div>
+        <h3 class="empty-title">Belum ada catatan</h3>
+        <p class="empty-desc" id="emptyDesc">Mulai buat kartu catatan, simpan tautan & role akses, atau atur aktivitas harian.</p>
+        <button id="emptyActionBtn" class="btn btn-primary">➕ Buat Catatan Pertama</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- In-App Notification Toast for Reminders -->
+  <div id="reminderToast" class="reminder-toast" style="display: none;">
+    <div class="toast-icon">⏰</div>
+    <div class="toast-body">
+      <h4 class="toast-title" id="toastTitle">Pengingat Aktivitas</h4>
+      <p class="toast-desc" id="toastDesc">Waktunya menyelesaikan agenda.</p>
+      <div class="toast-actions">
+        <button id="toastSnoozeBtn" class="toast-btn snooze">💤 Tunda 10m</button>
+        <button id="toastDismissBtn" class="toast-btn dismiss">✓ Selesai</button>
+      </div>
+    </div>
+    <button id="toastCloseBtn" class="toast-close">✕</button>
+  </div>
+
+  <!-- Modal: Card Editor -->
+  <div id="cardModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog modal-card-editor">
+      <div class="modal-header">
+        <h3 class="modal-title" id="cardModalTitle">Buat Catatan Baru</h3>
+        <button class="modal-close" id="closeCardModal">✕</button>
+      </div>
+      <form id="cardForm" class="modal-body">
+        <input type="hidden" id="editCardId">
+
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label for="formTitle" class="form-label">Judul *</label>
+            <input type="text" id="formTitle" class="form-input" placeholder="Judul catatan atau aktivitas..." required>
+          </div>
+          <div class="form-group form-pinned-group">
+            <label class="form-label">Sematkan</label>
+            <label class="checkbox-label pin-checkbox">
+              <input type="checkbox" id="formPinned">
+              <span>📌 Pin</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="formContent" class="form-label">Isi Catatan</label>
+          <textarea id="formContent" class="form-textarea" rows="3" placeholder="Tulis catatan, teks, atau ringkasan di sini..."></textarea>
+        </div>
+
+        <!-- Color Palette -->
+        <div class="form-group">
+          <label class="form-label">Warna Aksen</label>
+          <div class="color-picker-palette" id="colorPickerPalette">
+            <button type="button" class="color-swatch active" data-color="#6366f1" style="background: #6366f1;"></button>
+            <button type="button" class="color-swatch" data-color="#06b6d4" style="background: #06b6d4;"></button>
+            <button type="button" class="color-swatch" data-color="#10b981" style="background: #10b981;"></button>
+            <button type="button" class="color-swatch" data-color="#f59e0b" style="background: #f59e0b;"></button>
+            <button type="button" class="color-swatch" data-color="#ef4444" style="background: #ef4444;"></button>
+            <button type="button" class="color-swatch" data-color="#ec4899" style="background: #ec4899;"></button>
+            <button type="button" class="color-swatch" data-color="#8b5cf6" style="background: #8b5cf6;"></button>
+            <button type="button" class="color-swatch" data-color="#64748b" style="background: #64748b;"></button>
+          </div>
+        </div>
+
+        <!-- Tags Input -->
+        <div class="form-group">
+          <label for="formTags" class="form-label">Tag (pisahkan dengan koma atau spasi)</label>
+          <input type="text" id="formTags" class="form-input" placeholder="contoh: link, role, internal">
+          <div class="tag-suggestions" id="tagSuggestions"></div>
+        </div>
+
+        <!-- Dynamic Metadata Section -->
+        <div class="form-group-collapsible">
+          <div class="collapsible-header" id="toggleMetadataFields">
+            <span>⚙️ Metadata Kustom</span>
+            <span class="collapsible-toggle-icon">▼</span>
+          </div>
+          <div class="collapsible-body" id="metadataFieldsContainer"></div>
+        </div>
+
+        <!-- Checklist / Subtasks -->
+        <div class="form-group-collapsible">
+          <div class="collapsible-header" id="toggleChecklist">
+            <span>✅ Checklist Aktivitas (<span id="checklistCountPreview">0</span>)</span>
+            <span class="collapsible-toggle-icon">▼</span>
+          </div>
+          <div class="collapsible-body" id="checklistContainer">
+            <div class="checklist-items" id="checklistItemsList"></div>
+            <div class="checklist-add-row">
+              <input type="text" id="newChecklistText" class="form-input" placeholder="Tambah to-do item...">
+              <button type="button" id="addChecklistBtn" class="btn btn-secondary">Tambah</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reminder -->
+        <div class="form-group-collapsible">
+          <div class="collapsible-header" id="toggleReminder">
+            <span>⏰ Pengingat (Reminder)</span>
+            <span class="collapsible-toggle-icon">▼</span>
+          </div>
+          <div class="collapsible-body" id="reminderContainer">
+            <div class="form-row">
+              <div class="form-group flex-1">
+                <label for="reminderDateTime" class="form-label">Waktu</label>
+                <input type="datetime-local" id="reminderDateTime" class="form-input">
+              </div>
+              <div class="form-group">
+                <label for="reminderRepeat" class="form-label">Pengulangan</label>
+                <select id="reminderRepeat" class="form-select">
+                  <option value="none">Sekali</option>
+                  <option value="daily">Harian</option>
+                </select>
+              </div>
+            </div>
+            <div class="reminder-quick-presets">
+              <button type="button" class="preset-btn" data-preset="1h">+1 Jam</button>
+              <button type="button" class="preset-btn" data-preset="today17">17:00 Hari Ini</button>
+              <button type="button" class="preset-btn" data-preset="tomorrow9">09:00 Besok</button>
+              <button type="button" class="preset-btn" data-preset="clear">Hapus</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelCardModal">Batal</button>
+          <button type="submit" class="btn btn-primary" id="saveCardBtn">Simpan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Metadata Schema Manager -->
+  <div id="schemaModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog modal-schema-manager">
+      <div class="modal-header">
+        <h3 class="modal-title">⚙️ Konfigurasi Metadata</h3>
+        <button class="modal-close" id="closeSchemaModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Definisikan atribut/metadata kartu secara dinamis.</p>
+        <div class="schema-fields-list" id="schemaFieldsList"></div>
+
+        <div class="schema-add-box">
+          <h4 class="schema-add-title">➕ Tambah Field Baru</h4>
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Kunci (Key)</label>
+              <input type="text" id="newFieldKey" class="form-input" placeholder="misal: branch, pic">
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Label</label>
+              <input type="text" id="newFieldLabel" class="form-input" placeholder="misal: Branch Git">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Tipe</label>
+              <select id="newFieldType" class="form-select">
+                <option value="text">Teks</option>
+                <option value="url">Link / URL</option>
+                <option value="badge">Badge</option>
+                <option value="select">Dropdown</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Ikon</label>
+              <input type="text" id="newFieldIcon" class="form-input" placeholder="🏷️" style="width: 60px; text-align: center;">
+            </div>
+            <div class="form-group flex-1" id="newFieldOptionsGroup" style="display: none;">
+              <label class="form-label">Pilihan (Pisahkan Koma)</label>
+              <input type="text" id="newFieldOptions" class="form-input" placeholder="Opsi 1, Opsi 2">
+            </div>
+            <div class="form-group" style="align-self: flex-end;">
+              <button type="button" id="addFieldBtn" class="btn btn-secondary">Tambah</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="cancelSchemaModal">Tutup</button>
+        <button type="button" class="btn btn-primary" id="saveSchemaBtn">Simpan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Export / Import Data -->
+  <div id="dataModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3 class="modal-title">💾 Cadangkan Data JSON</h3>
+        <button class="modal-close" id="closeDataModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-subtitle">Data otomatis tersimpan ke <code>wekeepit-data.json</code>.</p>
+        <div class="data-actions-grid">
+          <div class="data-action-card">
+            <h4>📥 Unduh Backup</h4>
+            <p>Simpan salinan data kartu ke file JSON.</p>
+            <button id="downloadJsonBtn" class="btn btn-primary">Unduh JSON</button>
+          </div>
+          <div class="data-action-card">
+            <h4>📤 Pulihkan / Impor</h4>
+            <p>Muat catatan dari file JSON.</p>
+            <input type="file" id="importFileInput" accept=".json" style="display: none;">
+            <button id="triggerImportBtn" class="btn btn-secondary">Pilih Berkas</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="closeDataModalBtn">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="metadata-engine.js"></script>
+  <script src="reminder-service.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

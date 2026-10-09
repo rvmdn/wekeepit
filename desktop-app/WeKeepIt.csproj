@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationTitle>WeKeepIt</ApplicationTitle>
+    <Product>WeKeepIt Desktop</Product>
+    <Version>1.1.0</Version>
+    <Authors>Antigravity</Authors>
+    <Description>Portable Card Notepad &amp; Notice Board with Multi-Tag Filtering</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\index.html" Link="assets\index.html" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\style.css" Link="assets\style.css" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\app.js" Link="assets\app.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\metadata-engine.js" Link="assets\metadata-engine.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\reminder-service.js" Link="assets\reminder-service.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\metadata-schema.json" Link="assets\metadata-schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\wekeepit-data.json" Link="assets\wekeepit-data.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
