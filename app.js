@@ -1073,6 +1073,8 @@
     renderChecklistEditor();
     renderAttachmentsEditor();
     cardModal.style.display = 'flex';
+    const modalBody = cardModal.querySelector('.modal-body');
+    if (modalBody) modalBody.scrollTop = 0;
     formTitle.focus();
   }
 
