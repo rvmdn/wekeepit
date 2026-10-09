@@ -50,6 +50,7 @@
   const cardModal = document.getElementById('cardModal');
   const cardModalTitle = document.getElementById('cardModalTitle');
   const cardForm = document.getElementById('cardForm');
+  const cardTypeSelect = document.getElementById('cardTypeSelect');
   const editCardId = document.getElementById('editCardId');
   const formTitle = document.getElementById('formTitle');
   const formPinned = document.getElementById('formPinned');
@@ -448,6 +449,13 @@
       document.getElementById('importFileInput').click();
     });
     document.getElementById('importFileInput').addEventListener('change', importDataJson);
+
+    // Card Type Selector (Mau Simpan Apa?)
+    if (cardTypeSelect) {
+      cardTypeSelect.addEventListener('change', () => {
+        updateCardTypeView(cardTypeSelect.value);
+      });
+    }
 
     // Collapsibles in card editor
     setupCollapsible('toggleMetadataFields');
@@ -1026,11 +1034,80 @@
   }
 
   // --- CARD MODAL / FORM ---
+  function updateCardTypeView(type) {
+    const formContentGroup = document.getElementById('formContentGroup');
+    const metadataCollapsible = document.getElementById('metadataCollapsible');
+    const checklistCollapsible = document.getElementById('checklistCollapsible');
+    const attachmentsCollapsible = document.getElementById('attachmentsCollapsible');
+    const reminderCollapsible = document.getElementById('reminderCollapsible');
+
+    const setVisibility = (el, show, autoExpand = false) => {
+      if (!el) return;
+      el.style.display = show ? 'block' : 'none';
+      if (show && autoExpand && el.classList.contains('form-group-collapsible')) {
+        el.classList.remove('collapsed');
+      }
+    };
+
+    switch (type) {
+      case 'note':
+        setVisibility(formContentGroup, true);
+        setVisibility(metadataCollapsible, false);
+        setVisibility(checklistCollapsible, false);
+        setVisibility(attachmentsCollapsible, false);
+        setVisibility(reminderCollapsible, false);
+        break;
+
+      case 'link':
+        setVisibility(formContentGroup, true);
+        setVisibility(metadataCollapsible, true, true);
+        setVisibility(checklistCollapsible, false);
+        setVisibility(attachmentsCollapsible, false);
+        setVisibility(reminderCollapsible, false);
+        break;
+
+      case 'document':
+        setVisibility(formContentGroup, true);
+        setVisibility(metadataCollapsible, false);
+        setVisibility(checklistCollapsible, false);
+        setVisibility(attachmentsCollapsible, true, true);
+        setVisibility(reminderCollapsible, false);
+        break;
+
+      case 'checklist':
+        setVisibility(formContentGroup, false);
+        setVisibility(metadataCollapsible, false);
+        setVisibility(checklistCollapsible, true, true);
+        setVisibility(attachmentsCollapsible, false);
+        setVisibility(reminderCollapsible, false);
+        break;
+
+      case 'reminder':
+        setVisibility(formContentGroup, true);
+        setVisibility(metadataCollapsible, false);
+        setVisibility(checklistCollapsible, false);
+        setVisibility(attachmentsCollapsible, false);
+        setVisibility(reminderCollapsible, true, true);
+        break;
+
+      case 'all':
+      default:
+        setVisibility(formContentGroup, true);
+        setVisibility(metadataCollapsible, true);
+        setVisibility(checklistCollapsible, true);
+        setVisibility(attachmentsCollapsible, true);
+        setVisibility(reminderCollapsible, true);
+        break;
+    }
+  }
+
   function openCardModal(card = null) {
     cardForm.reset();
     editingChecklist = [];
     editingAttachments = [];
     selectedColor = '#6366f1';
+
+    let initialType = 'note';
 
     // Reset palette
     colorPickerPalette.querySelectorAll('.color-swatch').forEach(s => {
@@ -1065,10 +1142,37 @@
         reminderDateTime.value = card.reminder.datetime ? card.reminder.datetime.slice(0, 16) : '';
         reminderRepeat.value = card.reminder.repeat || 'none';
       }
+
+      // Automatically detect initial type for existing card
+      const hasDocs = editingAttachments.length > 0;
+      const hasChecklist = editingChecklist.length > 0;
+      const hasReminder = !!(card.reminder && card.reminder.datetime);
+      const hasMeta = card.metadata && Object.values(card.metadata).some(Boolean);
+
+      const featuresCount = [hasDocs, hasChecklist, hasReminder, hasMeta].filter(Boolean).length;
+      if (featuresCount > 1) {
+        initialType = 'all';
+      } else if (hasDocs) {
+        initialType = 'document';
+      } else if (hasReminder) {
+        initialType = 'reminder';
+      } else if (hasChecklist) {
+        initialType = 'checklist';
+      } else if (hasMeta) {
+        initialType = 'link';
+      } else {
+        initialType = 'note';
+      }
     } else {
       cardModalTitle.textContent = 'Buat Catatan Baru';
       editCardId.value = '';
+      initialType = 'note';
     }
+
+    if (cardTypeSelect) {
+      cardTypeSelect.value = initialType;
+    }
+    updateCardTypeView(initialType);
 
     renderChecklistEditor();
     renderAttachmentsEditor();
