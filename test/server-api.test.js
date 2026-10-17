@@ -80,34 +80,84 @@ describe('Server V2 API Integration Tests', () => {
     });
   });
 
-  function waitForProcessExit(cp, timeoutMs = 5000) {
+  function waitForProcessExit(cp, timeoutMs = 7000) {
     if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
       return Promise.resolve();
     }
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       let timer = null;
+      let exited = false;
       const onExit = () => {
+        if (exited) return;
+        exited = true;
         if (timer) clearTimeout(timer);
         resolve();
       };
-      timer = setTimeout(() => {
-        try { cp.kill('SIGKILL'); } catch (e) {}
-        onExit();
-      }, timeoutMs);
-
       cp.once('exit', onExit);
       cp.once('close', onExit);
+
+      timer = setTimeout(() => {
+        if (!exited && cp.exitCode === null && cp.signalCode === null) {
+          reject(new Error(`Child process (PID ${cp.pid}) did not exit within ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
     });
   }
 
-  async function terminateProcess(cp, timeoutMs = 5000) {
+  function terminateProcess(cp, termTimeoutMs = 4000, killTimeoutMs = 4000) {
     if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
-      return;
+      return Promise.resolve();
     }
-    try {
-      cp.kill('SIGTERM');
-    } catch (e) {}
-    await waitForProcessExit(cp, timeoutMs);
+    return new Promise((resolve, reject) => {
+      let exited = false;
+      let killTimer = null;
+      let failTimer = null;
+
+      const cleanup = () => {
+        if (killTimer) clearTimeout(killTimer);
+        if (failTimer) clearTimeout(failTimer);
+        cp.removeListener('exit', onExit);
+        cp.removeListener('close', onExit);
+      };
+
+      const onExit = () => {
+        if (exited) return;
+        exited = true;
+        cleanup();
+        resolve();
+      };
+
+      // 1. Pasang listener exit dan close sebelum mengirim sinyal
+      cp.once('exit', onExit);
+      cp.once('close', onExit);
+
+      // 2. Kirim SIGTERM
+      try {
+        cp.kill('SIGTERM');
+      } catch (e) {
+        if (cp.exitCode !== null || cp.signalCode !== null) {
+          onExit();
+          return;
+        }
+      }
+
+      // 3. Jika SIGTERM timeout tercapai, kirim SIGKILL dan tetap tunggu konfirmasi exit/close
+      killTimer = setTimeout(() => {
+        if (!exited && cp.exitCode === null && cp.signalCode === null) {
+          try {
+            cp.kill('SIGKILL');
+          } catch (e) {}
+
+          // 4. Jika setelah SIGKILL tetap tidak keluar, gagalkan tes dengan error jelas
+          failTimer = setTimeout(() => {
+            if (!exited && cp.exitCode === null && cp.signalCode === null) {
+              cleanup();
+              reject(new Error(`Failed to terminate process (PID: ${cp.pid}) within ${termTimeoutMs + killTimeoutMs}ms after SIGTERM and SIGKILL`));
+            }
+          }, killTimeoutMs);
+        }
+      }, termTimeoutMs);
+    });
   }
 
   after(async () => {

@@ -4,24 +4,24 @@
 **Auditor:** Senior QA Engineer, Application Security Engineer & Software Architect  
 **Audit Date:** 2026-10-17  
 **Repository:** `https://github.com/rvmdn/wekeepit`  
-**Test Suite Coverage:** 123 tests across 34 suites (100% passing)
+**Test Suite Coverage:** 124 tests across 34 suites (100% passing)
 
 ---
 
 ## 1. Executive Summary
 
-Audit menyeluruh Tahap 6, Tahap 6.1, Tahap 6.2, dan Tahap 6.3 (Real-World Acceptance & Security Audit) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0) dan tinggi (P1) yang berhasil direproduksi—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, hardening endpoint buka berkas, serta isolasi total database SQLite dan siklus hidup resource dalam pengujian—telah diselesaikan secara tuntas. Seluruh 123 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan database aplikasi default (`wekeepit-index.db`) serta data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan.
+Audit menyeluruh Tahap 6, Tahap 6.1, Tahap 6.2, Tahap 6.3, dan Tahap 6.5 (Real-World Acceptance & Security Audit: Zero-Touch Database Isolation) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0) dan tinggi (P1) yang berhasil direproduksi—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, hardening endpoint buka berkas, isolasi total database SQLite tanpa mutasi root repository (zero-touch), dan penghentian child process yang deterministik—telah diselesaikan secara tuntas. Seluruh 124 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan database aplikasi default repository root (`wekeepit-index.db`) serta data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan.
 
 ### Metrik Pengujian Otomatis
 
-| Parameter | Kondisi Awal (Baseline) | Pasca Tahap 6 | Pasca Tahap 6.1 | Pasca Tahap 6.2 | Pasca Tahap 6.3 (Current) | Status |
+| Parameter | Kondisi Awal (Baseline) | Pasca Tahap 6 | Pasca Tahap 6.1 | Pasca Tahap 6.2 | Pasca Tahap 6.5 (Current) | Status |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Total Test Suites** | 19 suites (6 test files) | 32 suites (8 test files) | 33 suites (8 test files) | 33 suites (8 test files) | **34 suites (8 test files)** | **+15 suites** |
-| **Total Tests** | 50 tests | 85 tests | 107 tests | 115 tests | **123 tests** | **+73 tests** |
-| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | 115 (100%) | **123 (100%)** | **PASS** |
+| **Total Tests** | 50 tests | 85 tests | 107 tests | 115 tests | **124 tests** | **+74 tests** |
+| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | 115 (100%) | **124 (100%)** | **PASS** |
 | **Failed Tests** | 0 | 0 | 0 | 0 | **0** | **0 Failures** |
-| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | 0.47 detik | **5.09 detik** | Sangat Cepat & Terisolasi Penuh |
-| **Integritas Database Default** | Tidak Terisolasi | Tidak Terisolasi | Tidak Terisolasi | Parsial | **Terisolasi Penuh (Hash, Size, mtime, WAL/SHM Identik)** | **TERISOLASI** |
+| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | 0.47 detik | **5.16 detik** | Sangat Cepat & Terisolasi Penuh |
+| **Integritas Database Root** | Tidak Terisolasi | Tidak Terisolasi | Tidak Terisolasi | Parsial | **Zero-Touch Penuh (0 bytes touched, no fixtures in root)** | **TERISOLASI MUTLAK** |
 | **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | **Terverifikasi (0 bytes altered)** | **Terjaga** |
 
 ---
@@ -119,22 +119,29 @@ Audit menyeluruh Tahap 6, Tahap 6.1, Tahap 6.2, dan Tahap 6.3 (Real-World Accept
   5. **Eksekusi Aman:** Parameter `explorer.exe` dipassing secara aman melalui array argumen `launchTarget` tanpa konkatenasi shell command. Pada mode pengujian otomatis (`NODE_ENV === 'test'`), proses UI disupresi agar tidak memunculkan jendela Windows Explorer yang mengganggu.
 - **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan 3: 14 tests passing).
 
-### SEC-08 — Isolasi Database dan Resource dalam Pengujian (P1 / Temuan Wajib Phase 6.3)
-- **File & Baris:** `server.js:735-820`, `indexer/db.js:7-35`, `test/server-api.test.js:80-115`, `test/audit-security-and-integrity.test.js:8-33, 810-1100`.
+### SEC-08 — Isolasi Database Zero-Touch dan Lifecycle Child Process (P1 / Temuan Wajib Phase 6.3 – 6.5)
+- **File & Baris:** `server.js:735-820`, `indexer/db.js:7-35`, `test/server-api.test.js:15-80, 100-140`, `test/audit-security-and-integrity.test.js:8-60, 810-1200`.
 - **Skenario Risiko:**
   1. Sebelumnya `server.js` menginisialisasi database SQLite default `wekeepit-index.db` dan memanggil `initWatchers()` secara eager saat modul di-import (`require('../server.js')`).
   2. Test child process pada `server-api.test.js` serta beberapa tes binding pada `audit-security-and-integrity.test.js` tidak menyuplai `INDEX_DB_PATH`, sehingga pengujian langsung menyentuh, membuka, memigrasikan, dan menjalankan watcher pada database default aplikasi di repository root.
-  3. Hal ini berisiko mencemari data produksi, menimbulkan konflik lock file SQLite (WAL/SHM), dan menyebabkan race condition antara background watcher dengan file sistem pengguna.
-- **Perbaikan:**
+  3. Pada pengujian isolasi awal, terdapat mekanisme pembuatan fixture dummy pada root `wekeepit-index.db` yang secara sementara memodifikasi database root. Hal ini melanggar prinsip *zero-touch* dan berisiko merusak database pengguna lokal.
+  4. Penghentian child process yang hanya mengirimkan sinyal `kill()` tanpa menunggu event `exit` dan `close` menyebabkan race condition penghapusan file sementara di Windows (`EBUSY: resource busy or locked`).
+- **Perbaikan (Zero-Touch Database Isolation & Robust Process Termination):**
   1. **Server Factory Architecture (`createServerApp`):** Mengabstraksi pembuatan server HTTP ke dalam factory `createServerApp(options)` dengan dependensi yang sepenuhnya terinjeksi dan terisolasi (`db`, `folderManager`, `documentIndexer`, `searchEngine`, `dataFile`, `schemaFile`, `baseDir`).
   2. **Isolasi Efek Samping Import Pasif:** Menghilangkan pemanggilan `initWatchers()` dan inisialisasi eager pada scope modul `server.js`. Modul yang mengimpor utilitas murni seperti `isLoopbackHost` atau `resolveLoopbackHost` tidak memicu pembuatan instance database atau watcher sama sekali. Pengujian impor pasif dijalankan pada child process terpisah dengan `INDEX_DB_PATH` dihapus dari environment, membuktikan modul dapat di-require tanpa efek samping dan keluar dengan exit code 0.
   3. **Strict Database Protection & Test Fallback:** Pada `IndexDB`, jika terdeteksi lingkungan pengujian (`NODE_ENV === 'test'`), pemanggilan tanpa argumen otomatis fallback ke database in-memory (`:memory:`) atau path sementara dari `process.env.INDEX_DB_PATH`. Setiap upaya mengakses path database default (`wekeepit-index.db`) selama pengujian akan langsung melempar exception `[Security Violation] Direct access to default database ... is strictly prohibited during test execution`.
-  4. **Urutan `close()` & In-Flight Request Protection:** Metode `close()` dan `server.close()` menutup HTTP server terlebih dahulu sebelum database dan watcher dihentikan. Hal ini menjamin request HTTP yang sedang berjalan (in-flight) selesai diproses dengan koneksi DB yang tetap valid, dan penutupan berulang (repeated/concurrent close) terjamin aman dan idempoten.
-  5. **Lifecycle Cleanup Deterministik & Non-Swallowing Cleanup:** Seluruh child process ditunggu sampai benar-benar keluar (`waitForProcessExit` / `terminateProcess`) sebelum direktori temporary dihapus, dan verifikasi penghapusan dilakukan secara deterministik tanpa menelan error cleanup (`assert.equal(fs.existsSync(tempDir), false)`).
-  6. **Bukti Isolasi Database Lengkap:**
-     - **Database Default Eksis:** Perbandingan snapshot presisi sebelum dan sesudah pengujian (SHA-256 hash, ukuran byte, mtime, serta keberadaan & hash file WAL/SHM) membuktikan 100% identik tanpa perubahan.
-     - **Database Default Tidak Eksis:** Menjalankan child process terisolasi pada lokasi aplikasi temporary membuktikan tidak ada berkas default `wekeepit-index.db`, `-wal`, atau `-shm` yang dibuat.
-- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan Wajib Phase 6.3: 7 tests passing) dan `test/server-api.test.js` (Subtest isolated child process: 1 test passing).
+  4. **Eliminasi Total Mutasi Root DB (Zero-Touch Isolation):** Seluruh mekanisme pembuatan dummy fixture di repository root dihapus total. Pengujian database default dipecah menjadi dua skenario murni terisolasi:
+     - **Skenario 1 (Database Tersedia):** Membuat database SQLite valid dalam direktori sandbox aplikasi sementara (`fs.mkdtempSync`). Mengambil snapshot lengkap (SHA-256 hash, ukuran byte, `mtime`, serta keberadaan file `-wal` dan `-shm`) sebelum operasi. Menjalankan operasi database/indexer/search pada instance terisolasi, kemudian membandingkan snapshot sesudah operasi untuk membuktikan database default tetap 100% identik dan tidak tersentuh.
+     - **Skenario 2 (Database Tidak Tersedia):** Menjalankan child process terisolasi pada direktori aplikasi sementara tanpa database default. Membuktikan berkas `wekeepit-index.db`, `-wal`, dan `-shm` tidak pernah dibuat pada lokasi default baik selama operasi maupun setelah proses berakhir.
+     - **Verifikasi Root Repository Database:** Snapshot metadata dan hash root repository diambil sebelum seluruh suite berjalan, lalu diverifikasi kondisinya tetap identik tanpa modifikasi atau sentuhan apapun.
+  5. **Urutan `close()` & In-Flight Request Protection:** Metode `close()` dan `server.close()` menutup HTTP server terlebih dahulu sebelum database dan watcher dihentikan. Hal ini menjamin request HTTP yang sedang berjalan (in-flight) selesai diproses dengan koneksi DB yang tetap valid, dan penutupan berulang (repeated/concurrent close) terjamin aman dan idempoten.
+  6. **Helper Penghentian Child Process Anti-Race Condition:**
+     - Listener `exit` dan `close` dipasang *sebelum* sinyal penghentian dikirimkan agar tidak kehilangan event.
+     - Mengirim `SIGTERM` lalu menunggu konfirmasi keluar proses.
+     - Jika batas waktu timeout tercapai, eskalasi ke `SIGKILL` dan tetap menunggu konfirmasi `exit`/`close`.
+     - Promise tidak pernah diselesaikan hanya karena sinyal kill telah dikirim; jika proses tidak dapat dipastikan berhenti, tes digagalkan dengan error eksplisit.
+     - Penghapusan direktori temporary hanya dilakukan setelah child process dipastikan benar-benar berhenti, dan hasil penghapusan diverifikasi secara tegas (`assert.strictEqual(fs.existsSync(tempDir), false)`) tanpa menelan error cleanup.
+- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan Wajib Phase 6.3 – 6.5: 8 tests passing) dan `test/server-api.test.js` (Subtest isolated child process: 1 test passing).
 
 ### SRCH-01 — False Positive Typo Matching pada Angka & Substring Leak (P1)
 - **File & Baris:** `indexer/search-engine.js:276-320`.
@@ -241,14 +248,14 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 
 ## 7. Definition of Done (DoD) Checklist
 
-- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 123/123 tests passed across 34 suites (100% passing).
-- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, database isolation, test lifecycle cleanup, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
+- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 124/124 tests passed across 34 suites (100% passing).
+- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, zero-touch database isolation, child process termination lifecycle, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
 - [x] **3. Temuan memiliki severity, bukti, dan langkah reproduksi:** Terdokumentasi lengkap pada laporan ini.
 - [x] **4. Semua P0 dan P1 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SEC-05, SEC-06, SEC-07, SEC-08, SRCH-01, COLL-01 selesai diperbaiki menyeluruh.
-- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-search-and-parsers.test.js` dan `test/audit-security-and-integrity.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, Phase 6.2, dan Phase 6.3.
+- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-search-and-parsers.test.js` dan `test/audit-security-and-integrity.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, Phase 6.2, Phase 6.3, dan Phase 6.5.
 - [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable.
-- [x] **7. Data V1, database default, dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` dan `wekeepit-index.db` utuh (0 bytes altered by test suite).
-- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi baru serta bukti isolasi database dan siklus hidup resource.
+- [x] **7. Data V1, database default, dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` dan `wekeepit-index.db` utuh (0 bytes altered by test suite, zero-touch verified).
+- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi baru serta bukti isolasi database zero-touch dan siklus hidup resource.
 - [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi lokal.
 
 ---
@@ -258,10 +265,10 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 Untuk memverifikasi laporan ini secara mandiri:
 
 ```bash
-# 1. Jalankan seluruh test suite otomatis (123 tests, 34 suites)
+# 1. Jalankan seluruh test suite otomatis (124 tests, 34 suites)
 npm test
 
-# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik (56 tests)
+# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik (57 tests)
 node --test test/audit-security-and-integrity.test.js
 
 # 3. Jalankan test audit akurasi search & parser

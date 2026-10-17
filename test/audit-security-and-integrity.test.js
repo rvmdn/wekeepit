@@ -10,31 +10,100 @@ function waitForProcessExit(cp, timeoutMs = 7000) {
   if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let timer = null;
+    let exited = false;
     const onExit = () => {
+      if (exited) return;
+      exited = true;
       if (timer) clearTimeout(timer);
       resolve();
     };
-    timer = setTimeout(() => {
-      try { cp.kill('SIGKILL'); } catch (e) {}
-      onExit();
-    }, timeoutMs);
-
     cp.once('exit', onExit);
     cp.once('close', onExit);
+
+    timer = setTimeout(() => {
+      if (!exited && cp.exitCode === null && cp.signalCode === null) {
+        reject(new Error(`Child process (PID ${cp.pid}) did not exit within ${timeoutMs}ms`));
+      }
+    }, timeoutMs);
   });
 }
 
-async function terminateProcess(cp, timeoutMs = 7000) {
+function terminateProcess(cp, termTimeoutMs = 4000, killTimeoutMs = 4000) {
   if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
-    return;
+    return Promise.resolve();
   }
-  try {
-    cp.kill('SIGTERM');
-  } catch (e) {}
-  await waitForProcessExit(cp, timeoutMs);
+  return new Promise((resolve, reject) => {
+    let exited = false;
+    let killTimer = null;
+    let failTimer = null;
+
+    const cleanup = () => {
+      if (killTimer) clearTimeout(killTimer);
+      if (failTimer) clearTimeout(failTimer);
+      cp.removeListener('exit', onExit);
+      cp.removeListener('close', onExit);
+    };
+
+    const onExit = () => {
+      if (exited) return;
+      exited = true;
+      cleanup();
+      resolve();
+    };
+
+    // 1. Pasang listener exit dan close sebelum mengirim sinyal
+    cp.once('exit', onExit);
+    cp.once('close', onExit);
+
+    // 2. Kirim SIGTERM
+    try {
+      cp.kill('SIGTERM');
+    } catch (e) {
+      if (cp.exitCode !== null || cp.signalCode !== null) {
+        onExit();
+        return;
+      }
+    }
+
+    // 3. Jika SIGTERM timeout tercapai, kirim SIGKILL dan tetap tunggu konfirmasi exit/close
+    killTimer = setTimeout(() => {
+      if (!exited && cp.exitCode === null && cp.signalCode === null) {
+        try {
+          cp.kill('SIGKILL');
+        } catch (e) {}
+
+        // 4. Jika setelah SIGKILL tetap tidak keluar, gagalkan tes dengan error jelas
+        failTimer = setTimeout(() => {
+          if (!exited && cp.exitCode === null && cp.signalCode === null) {
+            cleanup();
+            reject(new Error(`Failed to terminate process (PID: ${cp.pid}) within ${termTimeoutMs + killTimeoutMs}ms after SIGTERM and SIGKILL`));
+          }
+        }, killTimeoutMs);
+      }
+    }, termTimeoutMs);
+  });
 }
+
+function captureSnapshot(filePath) {
+  const getFile = (file) => {
+    if (!fs.existsSync(file)) return { exists: false, size: 0, mtimeMs: 0, hash: null };
+    const stat = fs.statSync(file);
+    const content = fs.readFileSync(file);
+    const hash = crypto.createHash('sha256').update(content).digest('hex');
+    return { exists: true, size: stat.size, mtimeMs: stat.mtimeMs, hash };
+  };
+  return {
+    main: getFile(filePath),
+    wal: getFile(filePath + '-wal'),
+    shm: getFile(filePath + '-shm')
+  };
+}
+
+// Zero-touch baseline: capture repository root database state before any tests run
+const repoRootDbPath = path.resolve(__dirname, '..', 'wekeepit-index.db');
+const rootDbSnapshotBefore = captureSnapshot(repoRootDbPath);
 
 // Guarantee that the test runner process operates with an isolated temporary database path
 const testRunnerTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-audit-runner-'));
@@ -813,43 +882,59 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
   });
 
-  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3)', () => {
-    test('existing default database snapshot comparison: hash, size, mtime, WAL and SHM remain strictly untouched before and after test operations', async () => {
-      const defaultDbPath = path.resolve(__dirname, '..', 'wekeepit-index.db');
+  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3 & 6.5)', () => {
+    test('root repository default database is NEVER touched, mutated, opened, or created (zero-touch verification)', () => {
+      const rootDbSnapshotAfter = captureSnapshot(repoRootDbPath);
 
-      const captureSnapshot = (targetDbPath) => {
-        const getFile = (file) => {
-          if (!fs.existsSync(file)) return { exists: false, size: 0, mtimeMs: 0, hash: null };
-          const stat = fs.statSync(file);
-          const content = fs.readFileSync(file);
-          const hash = crypto.createHash('sha256').update(content).digest('hex');
-          return { exists: true, size: stat.size, mtimeMs: stat.mtimeMs, hash };
-        };
-        return {
-          main: getFile(targetDbPath),
-          wal: getFile(targetDbPath + '-wal'),
-          shm: getFile(targetDbPath + '-shm')
-        };
-      };
+      // Verify strict preservation of root database existence and metadata without touching it
+      assert.equal(rootDbSnapshotAfter.main.exists, rootDbSnapshotBefore.main.exists, 'Root DB existence must remain identical before and after test suite execution');
+      assert.equal(rootDbSnapshotAfter.wal.exists, rootDbSnapshotBefore.wal.exists, 'Root DB WAL file existence must remain identical');
+      assert.equal(rootDbSnapshotAfter.shm.exists, rootDbSnapshotBefore.shm.exists, 'Root DB SHM file existence must remain identical');
 
-      let createdDummyDefault = false;
-      if (!fs.existsSync(defaultDbPath)) {
-        fs.writeFileSync(defaultDbPath, 'DUMMY_DEFAULT_DB_CONTENT_FOR_ISOLATION_TEST', 'utf-8');
-        createdDummyDefault = true;
+      if (rootDbSnapshotBefore.main.exists) {
+        assert.equal(rootDbSnapshotAfter.main.hash, rootDbSnapshotBefore.main.hash, 'Root DB SHA-256 hash must be untouched');
+        assert.equal(rootDbSnapshotAfter.main.size, rootDbSnapshotBefore.main.size, 'Root DB byte size must be untouched');
+        assert.equal(rootDbSnapshotAfter.main.mtimeMs, rootDbSnapshotBefore.main.mtimeMs, 'Root DB mtime must be untouched');
+      } else {
+        assert.equal(rootDbSnapshotAfter.main.exists, false, 'Default DB must never be created in repository root if it did not exist');
       }
 
-      try {
-        const snapshotBefore = captureSnapshot(defaultDbPath);
-        assert.equal(snapshotBefore.main.exists, true, 'Default DB must exist for snapshot verification');
+      if (rootDbSnapshotBefore.wal.exists) {
+        assert.equal(rootDbSnapshotAfter.wal.hash, rootDbSnapshotBefore.wal.hash, 'Root DB WAL hash must be untouched');
+        assert.equal(rootDbSnapshotAfter.wal.size, rootDbSnapshotBefore.wal.size, 'Root DB WAL size must be untouched');
+      }
 
-        // Execute active operations: IndexDB, FolderManager, DocumentIndexer, and SearchEngine in an isolated directory
-        const isolatedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-snap-op-'));
+      if (rootDbSnapshotBefore.shm.exists) {
+        assert.equal(rootDbSnapshotAfter.shm.hash, rootDbSnapshotBefore.shm.hash, 'Root DB SHM hash must be untouched');
+      }
+    });
+
+    test('scenario 1 (database available): snapshot comparison in temporary app directory confirms pre-existing default DB remains strictly untouched', async () => {
+      const sandboxAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-snap-avail-'));
+      const defaultDbPath = path.join(sandboxAppDir, 'wekeepit-index.db');
+
+      try {
+        // 1. Buat database SQLite valid dalam direktori aplikasi sementara sebagai pre-existing default DB fixture
+        const Database = require('better-sqlite3');
+        const setupDb = new Database(defaultDbPath);
+        setupDb.pragma('journal_mode = WAL');
+        setupDb.exec(`
+          CREATE TABLE pre_existing_data (id INTEGER PRIMARY KEY, note TEXT);
+          INSERT INTO pre_existing_data (note) VALUES ('Initial baseline data');
+        `);
+        setupDb.close();
+
+        // 2. Ambil snapshot database, WAL, dan SHM sebelum operasi
+        const snapshotBefore = captureSnapshot(defaultDbPath);
+        assert.equal(snapshotBefore.main.exists, true, 'Pre-existing default DB must exist in sandbox app directory');
+
+        // 3. Jalankan operasi database/indexer/search pada instance yang terisolasi di direktori tersebut
+        const isolatedDbPath = path.join(sandboxAppDir, 'isolated-working.db');
         let isolatedDb = null;
         try {
-          const isolatedDbPath = path.join(isolatedDir, 'snap-isolated.db');
           isolatedDb = new IndexDB(isolatedDbPath);
           const isolatedFm = new FolderManager(isolatedDb);
-          const sampleFolder = path.join(isolatedDir, 'docs');
+          const sampleFolder = path.join(sandboxAppDir, 'docs');
           fs.mkdirSync(sampleFolder, { recursive: true });
           fs.writeFileSync(path.join(sampleFolder, 'sample.md'), '# Testing isolation', 'utf-8');
           const fRec = isolatedFm.addFolder(sampleFolder);
@@ -861,14 +946,13 @@ describe('Security & Data Integrity Audit Test Suite', () => {
           if (isolatedDb) {
             isolatedDb.close();
           }
-          fs.rmSync(isolatedDir, { recursive: true, force: true });
-          assert.equal(fs.existsSync(isolatedDir), false, 'Isolated directory must be removed cleanly');
         }
 
+        // 4. Ambil snapshot sesudah operasi
         const snapshotAfter = captureSnapshot(defaultDbPath);
 
-        // Strict comparison of snapshot before and after
-        assert.equal(snapshotAfter.main.exists, snapshotBefore.main.exists, 'Default DB existence must not change');
+        // 5. Bandingkan hash SHA-256, ukuran, mtime, serta keberadaan file
+        assert.equal(snapshotAfter.main.exists, true, 'Default DB must still exist');
         assert.equal(snapshotAfter.main.hash, snapshotBefore.main.hash, 'Default DB SHA-256 hash must be strictly identical before and after');
         assert.equal(snapshotAfter.main.size, snapshotBefore.main.size, 'Default DB size must be strictly identical before and after');
         assert.equal(snapshotAfter.main.mtimeMs, snapshotBefore.main.mtimeMs, 'Default DB mtime must be strictly untouched');
@@ -883,18 +967,20 @@ describe('Security & Data Integrity Audit Test Suite', () => {
           assert.equal(snapshotAfter.shm.hash, snapshotBefore.shm.hash, 'Default DB -shm hash must not change');
         }
       } finally {
-        if (createdDummyDefault && fs.existsSync(defaultDbPath)) {
-          fs.unlinkSync(defaultDbPath);
-        }
+        fs.rmSync(sandboxAppDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(sandboxAppDir), false, 'Sandbox app directory must be cleanly removed without error');
       }
     });
 
-    test('when default database does not exist, isolated test process in temporary app location must NOT create default database', async () => {
-      const tempAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-temp-app-'));
+    test('scenario 2 (database unavailable): isolated process in temporary app directory never creates default DB, WAL, or SHM', async () => {
+      const tempAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-app-unavail-'));
       const testDbPath = path.join(tempAppDir, 'test-isolated.db');
       const expectedDefaultDbPath = path.join(tempAppDir, 'wekeepit-index.db');
       const expectedWal = expectedDefaultDbPath + '-wal';
       const expectedShm = expectedDefaultDbPath + '-shm';
+
+      // Verify that initially the default database does NOT exist
+      assert.equal(fs.existsSync(expectedDefaultDbPath), false, 'Default DB must not exist initially in tempAppDir');
 
       const childScriptPath = path.join(tempAppDir, 'child-test-runner.js');
       const childCode = `
@@ -925,11 +1011,15 @@ const { createServerApp } = require(serverJsPath);
 
   await app.close();
 
+  // Check if default database was created during execution
+  const dbCreatedDuringRun = fs.existsSync(${JSON.stringify(expectedDefaultDbPath)});
+
   if (process.send) {
     process.send({
       success: true,
       pingStatus: pingRes.status,
-      pingOk: pingRes.body.status === 'ok'
+      pingOk: pingRes.body.status === 'ok',
+      dbCreatedDuringRun
     });
   }
   process.exit(0);
@@ -958,6 +1048,7 @@ const { createServerApp } = require(serverJsPath);
         assert.ok(childMsg && childMsg.success, 'Child test process in temporary app location must complete successfully');
         assert.equal(childMsg.pingStatus, 200);
         assert.equal(childMsg.pingOk, true);
+        assert.equal(childMsg.dbCreatedDuringRun, false, 'Default DB must NOT be created during child process execution');
 
         // Verify that default DB and WAL/SHM were NEVER created in tempAppDir
         assert.equal(fs.existsSync(expectedDefaultDbPath), false, 'wekeepit-index.db must NOT be created in temporary app location');
@@ -967,6 +1058,7 @@ const { createServerApp } = require(serverJsPath);
         // Verify that the designated isolated database WAS created
         assert.equal(fs.existsSync(testDbPath), true, 'Designated isolated test database must exist');
       } finally {
+        await terminateProcess(cp);
         fs.rmSync(tempAppDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(tempAppDir), false, 'Temporary app directory must be cleanly removed without error');
       }
@@ -1038,6 +1130,7 @@ process.exit(0);
         assert.equal(childMsg.createdFiles.length, 0, 'No files or databases should be created on passive import');
         assert.equal(cp.exitCode, 0, 'Process must exit cleanly with code 0 (no lingering watchers keeping event loop alive)');
       } finally {
+        await terminateProcess(cp);
         fs.rmSync(tempPassiveDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(tempPassiveDir), false, 'Passive import test directory must be deleted cleanly without error');
       }
