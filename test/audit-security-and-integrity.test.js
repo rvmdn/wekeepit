@@ -49,17 +49,57 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
   };
 
+  let testDocsDir;
+  let registeredFolderId;
+  let validDocPath;
+  let unindexedDocPath;
+  let dangerousExePath;
+  let dangerousScriptPath;
+
   before(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-audit-sec-'));
-    
-    // Spawn server process on AUDIT_PORT
+    testDocsDir = path.join(tempDir, 'registered-docs');
+    fs.mkdirSync(testDocsDir, { recursive: true });
+
+    validDocPath = path.join(testDocsDir, 'panduan-keamanan.md');
+    fs.writeFileSync(validDocPath, '# Panduan Keamanan\nDokumen terindeks resmi WeKeepIt.', 'utf-8');
+
+    const testDbPath = path.join(tempDir, 'audit-server.db');
     const { fork } = require('child_process');
     serverProcess = fork(path.join(__dirname, '..', 'server.js'), [], {
-      env: { ...process.env, PORT: AUDIT_PORT }
+      env: {
+        ...process.env,
+        PORT: AUDIT_PORT,
+        HOST: '127.0.0.1',
+        INDEX_DB_PATH: testDbPath,
+        NODE_ENV: 'test'
+      }
     });
 
     // Wait 1.5s for server to start
     await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Register testDocsDir via API
+    const regRes = await request('/api/folders', 'POST', { path: testDocsDir });
+    registeredFolderId = regRes.data.id;
+
+    // Wait for documentIndexer to index validDocPath
+    for (let i = 0; i < 20; i++) {
+      const statusRes = await request('/api/folders', 'GET');
+      const f = Array.isArray(statusRes.data) && statusRes.data.find(x => x.id === registeredFolderId);
+      if (f && f.readyDocs >= 1) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    // Create non-indexed and dangerous test fixtures inside registered folder
+    unindexedDocPath = path.join(testDocsDir, 'unindexed-notes.md');
+    fs.writeFileSync(unindexedDocPath, '# Catatan Baru Belum Terindeks', 'utf-8');
+
+    dangerousExePath = path.join(testDocsDir, 'trojan-payload.exe');
+    fs.writeFileSync(dangerousExePath, 'MZ DUMMY EXE FIXTURE', 'utf-8');
+
+    dangerousScriptPath = path.join(testDocsDir, 'malicious-script.bat');
+    fs.writeFileSync(dangerousScriptPath, '@echo off\r\nREM DUMMY BAT', 'utf-8');
   });
 
   after(() => {
@@ -71,6 +111,28 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         fs.rmSync(tempDir, { recursive: true, force: true });
       } catch (e) {}
     }
+  });
+
+  describe('Temuan 1: Server Network Binding to Loopback Only', () => {
+    test('server module should export HOST defaulting to 127.0.0.1 (IPv4 loopback)', () => {
+      const { HOST } = require('../server.js');
+      assert.equal(HOST, '127.0.0.1');
+    });
+
+    test('server listen configuration should bind strictly to loopback address 127.0.0.1', async () => {
+      const { HOST } = require('../server.js');
+      const testServer = http.createServer((req, res) => res.end('ok'));
+      await new Promise(resolve => testServer.listen(0, HOST, resolve));
+      const address = testServer.address();
+      assert.equal(address.address, '127.0.0.1');
+      await new Promise(resolve => testServer.close(resolve));
+    });
+
+    test('HTTP requests to 127.0.0.1 loopback should connect successfully', async () => {
+      const res = await request('/api/ping');
+      assert.equal(res.status, 200);
+      assert.equal(res.data.status, 'ok');
+    });
   });
 
   describe('SEC-01: Static File Serving Path Traversal Prevention', () => {
@@ -99,15 +161,127 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
   });
 
-  describe('SEC-02: /api/open-file Security Boundary Enforcement', () => {
+  describe('Temuan 2: CORS Policy & Unsafe Null Origin Protection', () => {
+    test('should strictly reject Origin: null on GET /api/cards with 403 Forbidden without CORS headers', async () => {
+      const res = await request('/api/cards', 'GET', null, { Origin: 'null' });
+      assert.equal(res.status, 403);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should strictly reject Origin: null on mutating POST /api/cards with 403 Forbidden', async () => {
+      const res = await request('/api/cards', 'POST', [{ id: 'null-hack', title: 'hacked' }], { Origin: 'null' });
+      assert.equal(res.status, 403);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should strictly reject Origin: null on preflight OPTIONS with 403 Forbidden', async () => {
+      const res = await request('/api/cards', 'OPTIONS', null, { Origin: 'null' });
+      assert.equal(res.status, 403);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should block request with forged foreign Host header with 403 Forbidden', async () => {
+      const res = await request('/api/ping', 'GET', null, { Host: 'evil-attacker-site.com' });
+      assert.equal(res.status, 403);
+      assert.match(String(res.data), /Host header tidak diizinkan/i);
+    });
+
+    test('should allow request with localhost or 127.0.0.1 Host header', async () => {
+      const res = await request('/api/ping', 'GET', null, { Host: `127.0.0.1:${AUDIT_PORT}` });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.status, 'ok');
+    });
+
+    test('should reject foreign cross-origin GET requests with 403 Forbidden', async () => {
+      const res = await request('/api/cards', 'GET', null, { Origin: 'https://evil-attacker.com' });
+      assert.equal(res.status, 403);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should reject foreign cross-origin POST requests with 403 Forbidden and not mutate data', async () => {
+      const res = await request('/api/cards', 'POST', [{ id: 'hack', title: 'evil' }], {
+        Origin: 'https://malicious-website.com'
+      });
+      assert.equal(res.status, 403);
+      assert.match(res.data.error, /Origin cross-origin tidak diizinkan/i);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should reject foreign cross-origin preflight OPTIONS with 403 Forbidden', async () => {
+      const res = await request('/api/cards', 'OPTIONS', null, {
+        Origin: 'https://malicious-website.com'
+      });
+      assert.equal(res.status, 403);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should allow direct request without Origin header without setting wildcard CORS', async () => {
+      const res = await request('/api/ping', 'GET');
+      assert.equal(res.status, 200);
+      assert.equal(res.data.status, 'ok');
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('should allow request from loopback origin (http://127.0.0.1 or http://localhost)', async () => {
+      const res = await request('/api/ping', 'GET', null, { Origin: `http://127.0.0.1:${AUDIT_PORT}` });
+      assert.equal(res.status, 200);
+      assert.equal(res.headers['access-control-allow-origin'], `http://127.0.0.1:${AUDIT_PORT}`);
+    });
+
+    test('should allow request from official desktop WebView2 origin (https://wekeepit.local)', async () => {
+      const res = await request('/api/ping', 'GET', null, { Origin: 'https://wekeepit.local' });
+      assert.equal(res.status, 200);
+      assert.equal(res.headers['access-control-allow-origin'], 'https://wekeepit.local');
+    });
+
+    test('should allow preflight OPTIONS from official desktop WebView2 origin (https://wekeepit.local)', async () => {
+      const res = await request('/api/cards', 'OPTIONS', null, { Origin: 'https://wekeepit.local' });
+      assert.equal(res.status, 204);
+      assert.equal(res.headers['access-control-allow-origin'], 'https://wekeepit.local');
+    });
+  });
+
+  describe('Temuan 3: /api/open-file Security Boundary & Path Hardening', () => {
     test('should reject opening arbitrary system files outside indexed folders with 403 Forbidden', async () => {
-      // Create a test file outside indexed directories
       const externalFile = path.join(tempDir, 'outside-secret.txt');
       fs.writeFileSync(externalFile, 'sensitive data', 'utf-8');
 
       const res = await request('/api/open-file', 'POST', { path: externalFile });
       assert.equal(res.status, 403);
-      assert.match(res.data.error, /di luar folder yang diizinkan/i);
+      assert.match(res.data.error, /Akses ditolak/i);
+    });
+
+    test('should reject opening executable files (.exe) inside indexed folders with 403 Forbidden', async () => {
+      const res = await request('/api/open-file', 'POST', { path: dangerousExePath });
+      assert.equal(res.status, 403);
+      assert.match(res.data.error, /berbahaya tidak diizinkan/i);
+    });
+
+    test('should reject opening script files (.bat, .cmd, .ps1, .vbs) inside indexed folders with 403 Forbidden', async () => {
+      const res = await request('/api/open-file', 'POST', { path: dangerousScriptPath });
+      assert.equal(res.status, 403);
+      assert.match(res.data.error, /berbahaya tidak diizinkan/i);
+    });
+
+    test('should reject opening sensitive internal files (.js, .json, .db, .env) with 403 Forbidden', async () => {
+      const appFile = path.join(__dirname, '..', 'server.js');
+      const res = await request('/api/open-file', 'POST', { path: appFile });
+      assert.equal(res.status, 403);
+      assert.match(res.data.error, /Akses ditolak/i);
+    });
+
+    test('should reject opening regular unindexed files inside indexed folders with 403 Forbidden', async () => {
+      const res = await request('/api/open-file', 'POST', { path: unindexedDocPath });
+      assert.equal(res.status, 403);
+      assert.match(res.data.error, /tidak terdaftar dalam indeks/i);
+    });
+
+    test('should reject non-document files (.txt) inside indexed folder with 403 Forbidden', async () => {
+      const txtFile = path.join(testDocsDir, 'readme.txt');
+      fs.writeFileSync(txtFile, 'text only', 'utf-8');
+      const res = await request('/api/open-file', 'POST', { path: txtFile });
+      assert.equal(res.status, 403);
+      assert.match(res.data.error, /hanya berkas dokumen/i);
     });
 
     test('should reject non-existent paths with 400 Bad Request', async () => {
@@ -121,33 +295,55 @@ describe('Security & Data Integrity Audit Test Suite', () => {
       assert.equal(res.status, 400);
       assert.match(res.data.error, /tidak valid/i);
     });
-  });
 
-  describe('SEC-03: DNS Rebinding & Cross-Origin Protection', () => {
-    test('should block request with forged foreign Host header with 403 Forbidden', async () => {
-      const res = await request('/api/ping', 'GET', null, { Host: 'evil-attacker-site.com' });
-      assert.equal(res.status, 403);
-      assert.match(String(res.data), /Host header tidak diizinkan/i);
-    });
-
-    test('should allow request with localhost or 127.0.0.1 Host header', async () => {
-      const res = await request('/api/ping', 'GET', null, { Host: `127.0.0.1:${AUDIT_PORT}` });
+    test('should successfully allow opening a legitimate indexed document (status: ready)', async () => {
+      const res = await request('/api/open-file', 'POST', { path: validDocPath });
       assert.equal(res.status, 200);
-      assert.equal(res.data.status, 'ok');
+      assert.equal(res.data.success, true);
+      assert.equal(res.data.ok, true);
     });
 
-    test('should block mutating cross-origin request from malicious origin with 403 Forbidden', async () => {
-      const res = await request('/api/cards', 'POST', [{ id: 'hack', title: 'evil' }], {
-        Origin: 'https://malicious-website.com'
-      });
-      assert.equal(res.status, 403);
-      assert.match(res.data.error, /Origin cross-origin tidak diizinkan/i);
+    test('should successfully allow opening a registered folder by folderId', async () => {
+      const res = await request('/api/open-file', 'POST', { folderId: registeredFolderId });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.success, true);
+      assert.equal(res.data.ok, true);
     });
 
-    test('should block preflight OPTIONS from malicious origin with 403 Forbidden', async () => {
-      const res = await request('/api/cards', 'OPTIONS', null, {
-        Origin: 'https://malicious-website.com'
-      });
+    test('should reject opening folder by unregistered folderId with 404 Not Found', async () => {
+      const res = await request('/api/open-file', 'POST', { folderId: 'fld-not-registered-999' });
+      assert.equal(res.status, 404);
+      assert.match(res.data.error, /tidak ditemukan/i);
+    });
+
+    test('should successfully allow opening a registered folder path with folderOnly: true', async () => {
+      const res = await request('/api/open-file', 'POST', { path: testDocsDir, folderOnly: true });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.success, true);
+      assert.equal(res.data.ok, true);
+    });
+
+    test('should successfully allow showing an indexed document location with folderOnly: true', async () => {
+      const res = await request('/api/open-file', 'POST', { path: validDocPath, folderOnly: true });
+      assert.equal(res.status, 200);
+      assert.equal(res.data.success, true);
+      assert.equal(res.data.ok, true);
+    });
+
+    test('should reject symlink escaping the registered folder boundary', async () => {
+      const outsideFile = path.join(tempDir, 'outside-secret.md');
+      fs.writeFileSync(outsideFile, '# Secret Outside', 'utf-8');
+      const symlinkPath = path.join(testDocsDir, 'symlink-outside.md');
+      try {
+        fs.symlinkSync(outsideFile, symlinkPath);
+      } catch (e) {
+        // Fallback for non-admin Windows environments: verify directory traversal escape
+        const traversalPath = path.join(testDocsDir, '..', 'outside-secret.md');
+        const res = await request('/api/open-file', 'POST', { path: traversalPath });
+        assert.equal(res.status, 403);
+        return;
+      }
+      const res = await request('/api/open-file', 'POST', { path: symlinkPath });
       assert.equal(res.status, 403);
     });
   });

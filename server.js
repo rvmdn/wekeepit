@@ -10,11 +10,42 @@ const SearchEngine = require('./indexer/search-engine.js');
 const MetadataEngine = require('./metadata-engine.js');
 
 const PORT = process.env.PORT || 4321;
+const HOST = process.env.HOST || '127.0.0.1'; // Strictly bind to loopback (Temuan 1)
 const DATA_FILE = path.join(__dirname, 'wekeepit-data.json');
 const SCHEMA_FILE = path.join(__dirname, 'metadata-schema.json');
 
+// Security policy constants (Temuan 2 & Temuan 3)
+const BLOCKED_EXTENSIONS = new Set([
+  '.exe', '.bat', '.cmd', '.ps1', '.vbs', '.vbe', '.js', '.jse', '.wsf', '.wsh',
+  '.msc', '.msi', '.msp', '.com', '.scr', '.pif', '.reg', '.dll', '.sys',
+  '.json', '.db', '.db-wal', '.db-shm', '.log', '.env', '.key', '.config', '.ini'
+]);
+
+const ALLOWED_DOC_EXTENSIONS = new Set(['.md', '.pdf', '.docx', '.xlsx']);
+
+const ALLOWED_LOOPBACK_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+const ALLOWED_EXACT_ORIGINS = new Set([
+  'https://wekeepit.local'
+]);
+
+function isAllowedOrigin(origin) {
+  if (!origin || typeof origin !== 'string') return false;
+  const clean = origin.trim();
+  if (clean === 'null' || clean === '') return false; // Strictly reject null origin (Temuan 2)
+  if (ALLOWED_EXACT_ORIGINS.has(clean)) return true;
+  return ALLOWED_LOOPBACK_ORIGIN_REGEX.test(clean);
+}
+
+function launchTarget(executable, args) {
+  if (process.env.NODE_ENV === 'test' || process.env.TEST_MODE === '1') {
+    return;
+  }
+  spawn(executable, args, { detached: true, stdio: 'ignore' });
+}
+
 // Initialize V2 Indexing & Search Engine
-const db = new IndexDB();
+const INDEX_DB_PATH = process.env.INDEX_DB_PATH || undefined;
+const db = new IndexDB(INDEX_DB_PATH);
 const folderManager = new FolderManager(db);
 const documentIndexer = new DocumentIndexer(db, folderManager);
 const searchEngine = new SearchEngine(db);
@@ -116,38 +147,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 2. Strict CORS policy (SEC-03: Restrict cross-origin access from external websites)
+  // 2. Strict CORS policy (Temuan 2: Reject null Origin, block foreign origins, allowlist desktop/loopback)
   const origin = req.headers.origin;
-  const isAllowedOrigin = !origin || origin === 'null' ||
-    /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(origin) ||
-    /^(vscode-webview|file|tauri|capacitor):\/\//i.test(origin);
 
-  if (isAllowedOrigin) {
-    if (origin) {
+  if (origin !== undefined) {
+    if (isAllowedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Vary', 'Origin');
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
     } else {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    }
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  } else {
-    // Foreign origins attempting preflight or mutations are blocked
-    if (req.method === 'OPTIONS') {
-      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('403 Forbidden: Origin cross-origin tidak diizinkan');
-      return;
-    }
-    if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+      // Disallowed Origin (e.g. null, https://malicious.com, or arbitrary foreign scheme)
+      if (req.method === 'OPTIONS') {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('403 Forbidden: Origin tidak diizinkan');
+        return;
+      }
+
       res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: '403 Forbidden: Origin cross-origin tidak diizinkan' }));
       return;
     }
-  }
-
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
+  } else {
+    // No Origin header: direct same-origin browser navigation, internal curl/PowerShell, or native app
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
   }
 
   // 3. Path Traversal Protection on raw request path (SEC-01)
@@ -385,24 +418,47 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // Native Open File or Show in Folder (SEC-02: Enforce security boundary)
+  // Native Open File or Show in Folder (Temuan 3: Strict security boundaries)
   if (pathname === '/api/open-file') {
     if (req.method === 'POST') {
       try {
         const payload = await parseBody(req);
-        const targetPath = payload.path;
         const folderOnly = Boolean(payload.folderOnly);
+        const folderId = payload.folderId;
+        const targetPath = payload.path;
 
+        // --- Action A: Open registered folder by folderId ---
+        if (folderId) {
+          if (typeof folderId !== 'string') {
+            throw new Error('ID folder tidak valid');
+          }
+          const folder = folderManager.db.getFolderById(folderId);
+          if (!folder || !folder.path || !fs.existsSync(folder.path)) {
+            sendJson(res, 404, { error: 'Folder terdaftar tidak ditemukan pada disk' });
+            return;
+          }
+          const canonicalFolder = fs.realpathSync(folder.path);
+
+          if (process.platform === 'win32') {
+            launchTarget('explorer.exe', [path.normalize(canonicalFolder)]);
+          } else {
+            const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+            launchTarget(cmd, [canonicalFolder]);
+          }
+          sendJson(res, 200, { success: true, ok: true });
+          return;
+        }
+
+        // Target path is required for file actions
         if (!targetPath || typeof targetPath !== 'string') {
-          throw new Error('Path berkas tidak valid');
+          throw new Error('Path berkas atau folder tidak valid');
         }
 
         const resolvedPath = path.resolve(targetPath);
         if (!fs.existsSync(resolvedPath)) {
-          throw new Error('Path berkas tidak ditemukan di komputer');
+          throw new Error('Path berkas atau folder tidak ditemukan di komputer');
         }
 
-        // Canonicalize path to resolve symlinks
         let canonicalTarget = resolvedPath;
         try {
           canonicalTarget = fs.realpathSync(resolvedPath);
@@ -410,50 +466,130 @@ const server = http.createServer(async (req, res) => {
           canonicalTarget = resolvedPath;
         }
 
-        // Validate boundary: Must be inside a registered indexed folder, an active indexed doc, or app directory
-        const folders = folderManager.listFolders();
-        const allowedRoots = folders.map(f => {
-          try {
-            return fs.existsSync(f.path) ? fs.realpathSync(f.path) : path.resolve(f.path);
-          } catch {
-            return path.resolve(f.path);
-          }
-        });
-
-        try {
-          allowedRoots.push(fs.realpathSync(__dirname));
-        } catch {
-          allowedRoots.push(path.resolve(__dirname));
-        }
-
         const normTarget = canonicalTarget.toLowerCase();
-        const isInsideAllowedRoot = allowedRoots.some(root => {
-          const normRoot = root.toLowerCase();
-          return normTarget === normRoot || normTarget.startsWith(normRoot + path.sep);
-        });
+        const ext = path.extname(canonicalTarget).toLowerCase();
 
-        const isIndexedDoc = !isInsideAllowedRoot && Boolean(
-          db.getDocumentByPath(canonicalTarget) || db.getDocumentByPath(resolvedPath)
-        );
-
-        if (!isInsideAllowedRoot && !isIndexedDoc) {
-          sendJson(res, 403, { error: 'Akses ditolak: berkas berada di luar folder yang diizinkan' });
+        // Strictly disallow executable, script, or configuration files under any circumstance
+        if (BLOCKED_EXTENSIONS.has(ext)) {
+          sendJson(res, 403, { error: 'Akses ditolak: tipe berkas berbahaya tidak diizinkan untuk dibuka' });
           return;
         }
 
-        if (process.platform === 'win32') {
-          if (folderOnly) {
-            spawn('explorer.exe', ['/select,', path.normalize(canonicalTarget)], { detached: true, stdio: 'ignore' });
-          } else {
-            spawn('explorer.exe', [path.normalize(canonicalTarget)], { detached: true, stdio: 'ignore' });
+        // --- Action B: Show in folder / Open containing folder (folderOnly: true) ---
+        if (folderOnly) {
+          // Check if target is directly a registered folder path
+          const registeredFolders = folderManager.listFolders();
+          const matchedFolder = registeredFolders.find(f => {
+            try {
+              return fs.existsSync(f.path) && fs.realpathSync(f.path).toLowerCase() === normTarget;
+            } catch {
+              return false;
+            }
+          });
+
+          if (matchedFolder) {
+            if (process.platform === 'win32') {
+              launchTarget('explorer.exe', [path.normalize(canonicalTarget)]);
+            } else {
+              const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+              launchTarget(cmd, [canonicalTarget]);
+            }
+            sendJson(res, 200, { success: true, ok: true });
+            return;
           }
-        } else {
-          // Fallback macOS / Linux
-          const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
-          spawn(cmd, [canonicalTarget], { detached: true, stdio: 'ignore' });
+
+          // Otherwise, target must be a registered indexed document
+          const doc = db.getDocumentByPath(canonicalTarget) || db.getDocumentByPath(resolvedPath);
+          if (!doc) {
+            sendJson(res, 403, { error: 'Akses ditolak: berkas berada di luar folder yang diizinkan atau tidak terdaftar dalam indeks' });
+            return;
+          }
+
+          // Verify document parent folder & symlink containment
+          const parentFolder = folderManager.db.getFolderById(doc.folder_id);
+          if (!parentFolder || !fs.existsSync(parentFolder.path)) {
+            sendJson(res, 403, { error: 'Akses ditolak: folder induk dokumen tidak ditemukan' });
+            return;
+          }
+
+          const canonicalParent = fs.realpathSync(parentFolder.path).toLowerCase();
+          if (!normTarget.startsWith(canonicalParent + path.sep) && normTarget !== canonicalParent) {
+            sendJson(res, 403, { error: 'Akses ditolak: berkas berada di luar batas folder terdaftar (symlink escape terdeteksi)' });
+            return;
+          }
+
+          if (process.platform === 'win32') {
+            launchTarget('explorer.exe', ['/select,', path.normalize(canonicalTarget)]);
+          } else {
+            const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+            launchTarget(cmd, [path.dirname(canonicalTarget)]);
+          }
+          sendJson(res, 200, { success: true, ok: true });
+          return;
         }
 
-        sendJson(res, 200, { success: true });
+        // --- Action C: Open regular document (folderOnly: false) ---
+        // 1. Must have an allowed document extension (.md, .pdf, .docx, .xlsx)
+        if (!ALLOWED_DOC_EXTENSIONS.has(ext)) {
+          sendJson(res, 403, { error: 'Akses ditolak: hanya berkas dokumen (.md, .pdf, .docx, .xlsx) yang diizinkan untuk dibuka' });
+          return;
+        }
+
+        // 2. Must be an active indexed document in the database
+        const doc = db.getDocumentByPath(canonicalTarget) || db.getDocumentByPath(resolvedPath);
+        if (!doc) {
+          sendJson(res, 403, { error: 'Akses ditolak: berkas berada di luar folder yang diizinkan atau tidak terdaftar dalam indeks' });
+          return;
+        }
+
+        // 3. Document status must be ready
+        if (doc.status !== 'ready') {
+          sendJson(res, 400, { error: 'Akses ditolak: dokumen belum siap atau gagal diindeks' });
+          return;
+        }
+
+        // 4. Verify canonical path matches registered document canonical path
+        let registeredCanonical = doc.path;
+        try {
+          if (fs.existsSync(doc.path)) {
+            registeredCanonical = fs.realpathSync(doc.path);
+          }
+        } catch (e) {}
+
+        if (registeredCanonical.toLowerCase() !== canonicalTarget.toLowerCase()) {
+          sendJson(res, 403, { error: 'Akses ditolak: path berkas tidak cocok dengan path kanonikal yang terdaftar' });
+          return;
+        }
+
+        // 5. Verify parent folder and symlink containment
+        const parentFolder = folderManager.db.getFolderById(doc.folder_id);
+        if (!parentFolder || !fs.existsSync(parentFolder.path)) {
+          sendJson(res, 403, { error: 'Akses ditolak: folder induk dokumen tidak ditemukan' });
+          return;
+        }
+
+        const canonicalParent = fs.realpathSync(parentFolder.path).toLowerCase();
+        if (!normTarget.startsWith(canonicalParent + path.sep) && normTarget !== canonicalParent) {
+          sendJson(res, 403, { error: 'Akses ditolak: berkas berada di luar batas folder terdaftar (symlink escape terdeteksi)' });
+          return;
+        }
+
+        // 6. Must not be inside application internal directory (__dirname)
+        const appDir = fs.realpathSync(__dirname).toLowerCase();
+        if (normTarget.startsWith(appDir + path.sep) || normTarget === appDir) {
+          sendJson(res, 403, { error: 'Akses ditolak: berkas internal aplikasi tidak dapat dibuka' });
+          return;
+        }
+
+        // Launch document safely
+        if (process.platform === 'win32') {
+          launchTarget('explorer.exe', [path.normalize(canonicalTarget)]);
+        } else {
+          const cmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+          launchTarget(cmd, [canonicalTarget]);
+        }
+
+        sendJson(res, 200, { success: true, ok: true });
         return;
       } catch (err) {
         const status = err.statusCode || 400;
@@ -506,9 +642,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`WeKeepIt V2 running at: http://localhost:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`WeKeepIt V2 running at: http://${HOST}:${PORT}`);
   });
 }
 
-module.exports = { server, PORT, db, folderManager, documentIndexer, searchEngine };
+module.exports = { server, PORT, HOST, db, folderManager, documentIndexer, searchEngine };

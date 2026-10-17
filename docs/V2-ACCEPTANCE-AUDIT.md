@@ -4,24 +4,24 @@
 **Auditor:** Senior QA Engineer, Application Security Engineer & Software Architect  
 **Audit Date:** 2026-10-17  
 **Repository:** `https://github.com/rvmdn/wekeepit`  
-**Test Suite Coverage:** 85 tests across 32 suites (100% passing)
+**Test Suite Coverage:** 107 tests across 33 suites (100% passing)
 
 ---
 
 ## 1. Executive Summary
 
-Audit menyeluruh Tahap 6 (Real-World Acceptance & Security Audit) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0) dan tinggi (P1) yang berhasil direproduksi telah diperbaiki secara minimal, diverifikasi dengan regression test otomatis baru, dan divalidasi tidak menimbulkan regresi terhadap fungsionalitas V1 maupun data pengguna (`wekeepit-data.json`).
+Audit menyeluruh Tahap 6 dan Tahap 6.1 (Real-World Acceptance & Security Audit) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0) dan tinggi (P1) yang berhasil direproduksi—termasuk 3 temuan lanjutan dari code review keamanan—telah diperbaiki secara menyeluruh, diverifikasi dengan regression test otomatis baru (total 107 tests lulus 100%), dan divalidasi tidak menimbulkan regresi terhadap fungsionalitas V1 maupun data pengguna (`wekeepit-data.json`).
 
 ### Metrik Pengujian Otomatis
 
-| Parameter | Kondisi Awal (Baseline) | Kondisi Akhir (Post-Audit) | Status |
-| :--- | :---: | :---: | :---: |
-| **Total Test Suites** | 19 suites (6 test files) | 32 suites (8 test files) | **+13 suites** |
-| **Total Tests** | 50 tests | 85 tests | **+35 tests** |
-| **Passed Tests** | 50 (100%) | 85 (100%) | **PASS** |
-| **Failed Tests** | 0 | 0 | **0 Failures** |
-| **Durasi Pengujian** | 1.71 detik | 2.59 detik | Cepat & Stabil |
-| **Integritas Data V1** | Terverifikasi | Terverifikasi (0 bytes altered) | Terjaga |
+| Parameter | Kondisi Awal (Baseline) | Pasca Tahap 6 | Pasca Tahap 6.1 (Current) | Status |
+| :--- | :---: | :---: | :---: | :---: |
+| **Total Test Suites** | 19 suites (6 test files) | 32 suites (8 test files) | 33 suites (8 test files) | **+14 suites** |
+| **Total Tests** | 50 tests | 85 tests | 107 tests | **+57 tests** |
+| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | **PASS** |
+| **Failed Tests** | 0 | 0 | 0 | **0 Failures** |
+| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | Cepat & Stabil |
+| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi (0 bytes altered) | Terjaga |
 
 ---
 
@@ -32,6 +32,9 @@ Audit menyeluruh Tahap 6 (Real-World Acceptance & Security Audit) telah selesai 
 | **SEC-01** | **P0 (Critical)** | Path Traversal | Static file serving di `server.js` rentan directory traversal via `..` dan encoded path (`%2e%2e`). | **RESOLVED** |
 | **SEC-02** | **P1 (High)** | Arbitrary File Launch | Endpoint `/api/open-file` menjalankan `explorer.exe` pada arbitrary file path tanpa validasi boundary folder terdaftar. | **RESOLVED** |
 | **SEC-03** | **P1 (High)** | Drive-By Cross-Origin & DNS Rebinding | CORS `*` dan Host header tanpa validasi memungkinkan situs web eksternal membaca notes atau memicu aksi desktop via browser. | **RESOLVED** |
+| **SEC-05** | **P1 (High)** | Server Network Binding (Temuan 1) | Server HTTP default bind ke `0.0.0.0` (seluruh interface jaringan). Harus dibatasi strictly ke loopback `127.0.0.1`. | **RESOLVED** |
+| **SEC-06** | **P1 (High)** | Unsafe Null Origin & CORS Fallback (Temuan 2) | Toleransi `Origin: null` atau skema arbitrary tanpa verifikasi identitas dapat dimanfaatkan sandboxed iframes. | **RESOLVED** |
+| **SEC-07** | **P1 (High)** | Overly Broad `/api/open-file` (Temuan 3) | Pembukaan berkas executables, scripts, unindexed files, atau folder sembarang melalui path arbitrary. | **RESOLVED** |
 | **SRCH-01** | **P1 (High)** | Search Accuracy | Typo tolerance Levenshtein matching pada angka $\ge 5$ digit (misal `20241` vs `20242`) dan substring leak kata umum. | **RESOLVED** |
 | **COLL-01** | **P1 (High)** | Data Integrity / Scale | `documents.id` tabrakan (Primary Key collision) pada scan folder cepat skala ribuan berkas akibat `Math.random` 4 karakter. | **RESOLVED** |
 | **SQL-01** | **P2 (Medium)** | SQLite FTS5 Sync | Penghapusan dokumen atau folder tidak menghapus entri virtual table FTS5 sehingga menimbulkan ghost rows. | **RESOLVED** |
@@ -69,6 +72,48 @@ Audit menyeluruh Tahap 6 (Real-World Acceptance & Security Audit) telah selesai 
   1. Whitelist Host header: hanya menerima `localhost`, `127.0.0.1`, atau `[::1]`. Host asing ditolak dengan HTTP 403.
   2. CORS dibatasi ke origin lokal (`localhost`, `127.0.0.1`, `file://`, `vscode-webview://`, `tauri://`, `capacitor://`). Origin asing yang mencoba mutasi (POST/PUT/DELETE) atau preflight OPTIONS langsung diblokir dengan HTTP 403.
 - **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest SEC-03: 4 tests passing).
+
+### SEC-05 — Server Network Binding to Local Loopback Only (P1 / Temuan 1)
+- **File & Baris:** `server.js:13`, `server.js:630-638`, `launch-desktop.bat:6,17,22-27`.
+- **Skenario Risiko:** Pemanggilan `server.listen(PORT)` tanpa argumen host mengikat server ke `0.0.0.0` (seluruh interface jaringan). Akibatnya, siapapun di jaringan lokal (LAN/Wi-Fi yang sama) dapat menghubungi HTTP API WeKeepIt jika port terbuka di firewall. Mengandalkan validasi Host header saja tidak cukup untuk menggantikan isolasi layer socket TCP.
+- **Perbaikan:**
+  1. Server HTTP sekarang mengikat secara eksplisit ke `HOST = process.env.HOST || '127.0.0.1'`, memastikan socket TCP hanya menerima koneksi loopback lokal.
+  2. Launcher Windows (`launch-desktop.bat`) diselaraskan ke `http://127.0.0.1:4321` untuk mencegah kegagalan resolusi DNS atau konflik IPv4/IPv6 dual-stack pada PowerShell `Invoke-WebRequest`.
+  3. Modul `server.js` mengekspor konfigurasi `HOST` dan diuji secara independen.
+- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan 1: 3 tests passing).
+- **Panduan Verifikasi Alamat Listen pada Windows:**
+  Pengguna atau auditor dapat memverifikasi binding loopback server pada Command Prompt atau PowerShell dengan menjalankan:
+  ```cmd
+  netstat -ano | findstr :4321
+  ```
+  **Output yang diharapkan:**
+  ```text
+  TCP    127.0.0.1:4321         0.0.0.0:0              LISTENING       <PID>
+  ```
+  *Kriteria kelulusan:* Kolom Local Address harus diawali `127.0.0.1:4321` (bukan `0.0.0.0:4321` atau `[::]:4321`).
+
+### SEC-06 — Unsafe Null Origin Elimination & Strict CORS Policy (P1 / Temuan 2)
+- **File & Baris:** `server.js:26-38`, `server.js:143-185`.
+- **Skenario Risiko:** `Origin: null` dikirim oleh browser pada sandboxed iframe, `data:` URI, atau konteks file lokal tertentu. Jika server mengizinkan `Origin: null` atau mengembalikan `Access-Control-Allow-Origin: *`, penyerang web dapat menyematkan iframe tanpa hak istimewa untuk mengekstrak atau mengubah data catatan lokal pengguna.
+- **Perbaikan:**
+  1. `Origin: null` dan origin kosong secara default ditolak seketika (mengembalikan `403 Forbidden` tanpa header `Access-Control-Allow-Origin`).
+  2. Menghapus seluruh wildcard `*` dan regex longgar berbasis skema sembarang (`file://`, `tauri://`, dll.).
+  3. Mengidentifikasi origin WebView2 aplikasi desktop Windows dari `desktop-app/Form1.cs` (`https://wekeepit.local`) dan mendaftarkannya ke allowlist presisi.
+  4. Menerapkan allowlist loopback regex: `^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$`.
+  5. Seluruh request dari origin asing (termasuk preflight OPTIONS, GET, POST, PUT, DELETE) langsung diblokir dengan HTTP 403 Forbidden dan tidak diizinkan membaca atau memodifikasi data lokal.
+  6. Request tanpa Origin header (navigasi langsung peramban / native client) tetap dilayani tanpa menyetel header wildcard CORS.
+- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan 2: 12 tests passing).
+
+### SEC-07 — Overly Broad `/api/open-file` Hardening & Execution Boundary (P1 / Temuan 3)
+- **File & Baris:** `server.js:18-24`, `server.js:414-585`.
+- **Skenario Risiko:** Endpoint `/api/open-file` sebelumnya menerima berkas arbitrary di disk. Penyerang lokal atau tautan berbahaya dapat memicu eksekusi file executable/script (`.exe`, `.bat`, `.ps1`, `.vbs`), membuka file konfigurasi rahasia (`.json`, `.db`, `.env`), atau membuka folder arbitrary di sistem operasi.
+- **Perbaikan:**
+  1. **Blacklist Berkas Berbahaya & Rahasia:** Seluruh ekstensi yang berpotensi dieksekusi (`.exe`, `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js`, dll.) serta berkas database/internal (`.json`, `.db`, `.log`, `.env`) secara mutlak diblokir dengan `403 Forbidden: Akses ditolak: tipe berkas berbahaya tidak diizinkan untuk dibuka`.
+  2. **Whitelist Dokumen Terdaftar:** Aksi buka dokumen biasa (`folderOnly: false`) dibatasi strictly hanya untuk dokumen berekstensi `.md`, `.pdf`, `.docx`, `.xlsx` yang terdaftar dalam database indeks dengan status `ready`.
+  3. **Verifikasi Path Kanonikal:** Memvalidasi `fs.realpathSync(doc.path) === canonicalTarget` untuk menggagalkan pemalsuan path dan symlink escape di luar folder induk terdaftar. Berkas di direktori aplikasi (`__dirname`) diblokir.
+  4. **Aksi Buka Folder Terdaftar:** Aksi buka folder mewajibkan `folderId` terdaftar (diverifikasi via database) atau path folder terdaftar dengan opsi eksplisit `folderOnly: true`.
+  5. **Eksekusi Aman:** Parameter `explorer.exe` dipassing secara aman melalui array argumen `launchTarget` tanpa konkatenasi shell command. Pada mode pengujian otomatis (`NODE_ENV === 'test'`), proses UI disupresi agar tidak memunculkan jendela Windows Explorer yang mengganggu.
+- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan 3: 14 tests passing).
 
 ### SRCH-01 — False Positive Typo Matching pada Angka & Substring Leak (P1)
 - **File & Baris:** `indexer/search-engine.js:276-320`.
@@ -175,15 +220,15 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 
 ## 7. Definition of Done (DoD) Checklist
 
-- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 85/85 tests passed across 32 suites.
-- [x] **2. Seluruh area utama diaudit:** Security, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
+- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 107/107 tests passed across 33 suites (100% passing).
+- [x] **2. Seluruh area utama diaudit:** Security, network binding, CORS/Origin policy, file launch boundaries, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
 - [x] **3. Temuan memiliki severity, bukti, dan langkah reproduksi:** Terdokumentasi lengkap pada laporan ini.
-- [x] **4. Semua P0 dan P1 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SRCH-01, COLL-01 selesai diperbaiki.
-- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-search-and-parsers.test.js` dan `test/audit-security-and-integrity.test.js` ditambahkan.
-- [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus.
-- [x] **7. Data V1 dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` utuh.
-- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai.
-- [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi.
+- [x] **4. Semua P0 dan P1 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SEC-05, SEC-06, SEC-07, SRCH-01, COLL-01 selesai diperbaiki menyeluruh.
+- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-search-and-parsers.test.js` dan `test/audit-security-and-integrity.test.js` diperluas mencakup 100% regresi Phase 6 & Phase 6.1.
+- [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable.
+- [x] **7. Data V1 dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` utuh (0 bytes altered).
+- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi baru serta panduan verifikasi Windows.
+- [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi lokal.
 
 ---
 
@@ -192,10 +237,10 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 Untuk memverifikasi laporan ini secara mandiri:
 
 ```bash
-# 1. Jalankan seluruh test suite otomatis (85 tests, 32 suites)
+# 1. Jalankan seluruh test suite otomatis (107 tests, 33 suites)
 npm test
 
-# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik
+# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik (41 tests)
 node --test test/audit-security-and-integrity.test.js
 
 # 3. Jalankan test audit akurasi search & parser
