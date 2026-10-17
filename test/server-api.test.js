@@ -80,16 +80,43 @@ describe('Server V2 API Integration Tests', () => {
     });
   });
 
-  after(() => {
+  function waitForProcessExit(cp, timeoutMs = 5000) {
+    if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      let timer = null;
+      const onExit = () => {
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+      timer = setTimeout(() => {
+        try { cp.kill('SIGKILL'); } catch (e) {}
+        onExit();
+      }, timeoutMs);
+
+      cp.once('exit', onExit);
+      cp.once('close', onExit);
+    });
+  }
+
+  async function terminateProcess(cp, timeoutMs = 5000) {
+    if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+      return;
+    }
+    try {
+      cp.kill('SIGTERM');
+    } catch (e) {}
+    await waitForProcessExit(cp, timeoutMs);
+  }
+
+  after(async () => {
     if (serverProcess) {
-      try {
-        serverProcess.kill();
-      } catch (e) {}
+      await terminateProcess(serverProcess);
     }
     if (tempDir && fs.existsSync(tempDir)) {
-      try {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-      } catch (e) {}
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
     }
   });
 

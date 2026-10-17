@@ -733,56 +733,65 @@ function createServerApp(options = {}) {
   };
 
   const originalClose = server.close.bind(server);
+  let closePromise = null;
   let isClosed = false;
 
   function close(callback) {
-    return new Promise((resolve, reject) => {
-      if (isClosed) {
-        if (callback) callback();
-        return resolve();
+    if (isClosed) {
+      if (typeof callback === 'function') {
+        process.nextTick(() => callback(null));
       }
-      isClosed = true;
+      return Promise.resolve();
+    }
 
-      try {
-        folderManager.stopAllWatchers();
-      } catch (e) {}
+    if (closePromise) {
+      if (typeof callback === 'function') {
+        closePromise.then(() => callback(null), (err) => callback(err));
+      }
+      return closePromise;
+    }
 
-      try {
-        if (db && typeof db.close === 'function') {
-          db.close();
+    closePromise = new Promise((resolve, reject) => {
+      const closeHttpServer = (done) => {
+        if (server.listening) {
+          originalClose((err) => {
+            if (err) return done(err);
+            done(null);
+          });
+        } else {
+          done(null);
         }
-      } catch (e) {}
+      };
 
-      if (server.listening) {
-        originalClose((err) => {
-          if (callback) callback(err);
-          if (err) reject(err);
-          else resolve();
-        });
-      } else {
-        if (callback) callback();
+      closeHttpServer((serverErr) => {
+        try {
+          folderManager.stopAllWatchers();
+        } catch (e) {}
+
+        try {
+          if (db && typeof db.close === 'function') {
+            db.close();
+          }
+        } catch (e) {}
+
+        isClosed = true;
+
+        if (serverErr) {
+          if (typeof callback === 'function') callback(serverErr);
+          return reject(serverErr);
+        }
+
+        if (typeof callback === 'function') callback(null);
         resolve();
-      }
+      });
     });
+
+    return closePromise;
   }
 
-  // Hook server.close so calling it stops watchers & closes DB deterministically
   server.close = function (callback) {
-    try {
-      folderManager.stopAllWatchers();
-    } catch (e) {}
-    try {
-      if (db && typeof db.close === 'function') {
-        db.close();
-      }
-    } catch (e) {}
-
-    if (server.listening) {
-      return originalClose(callback);
-    } else {
-      if (typeof callback === 'function') callback();
-      return server;
-    }
+    close(callback);
+    return server;
   };
 
   if (options.autoWatch) {
@@ -797,13 +806,14 @@ function createServerApp(options = {}) {
     searchEngine,
     metaEngine,
     initWatchers,
-    close
+    close,
+    get isClosed() { return isClosed; }
   };
 }
 
 let defaultApp = null;
 function getDefaultApp() {
-  if (!defaultApp) {
+  if (!defaultApp || defaultApp.isClosed) {
     defaultApp = createServerApp({
       autoWatch: false // Never start background watchers on passive module access
     });
