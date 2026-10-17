@@ -10,26 +10,59 @@ function isTestEnvironment() {
     process.argv.some(arg => typeof arg === 'string' && (arg.includes('test') || arg === '--test'));
 }
 
+function canonicalizeDbPath(p) {
+  if (!p || p === ':memory:') return null;
+  let resolved = path.resolve(p);
+
+  try {
+    if (fs.existsSync(resolved)) {
+      resolved = fs.realpathSync(resolved);
+    } else {
+      const parent = path.dirname(resolved);
+      if (fs.existsSync(parent)) {
+        resolved = path.join(fs.realpathSync(parent), path.basename(resolved));
+      }
+    }
+  } catch (_) {}
+
+  resolved = path.normalize(resolved);
+  if (process.platform === 'win32') {
+    resolved = resolved.toLowerCase();
+  }
+  return resolved;
+}
+
+function isDefaultDbPath(candidatePath) {
+  if (!candidatePath || candidatePath === ':memory:') {
+    return false;
+  }
+  const cand = canonicalizeDbPath(candidatePath);
+  const def = canonicalizeDbPath(DEFAULT_DB_PATH);
+  return cand !== null && def !== null && cand === def;
+}
+
 class IndexDB {
   constructor(dbPath) {
     const isTest = isTestEnvironment();
 
-    if (dbPath === undefined || dbPath === null) {
-      if (process.env.INDEX_DB_PATH) {
-        dbPath = process.env.INDEX_DB_PATH;
-      } else if (isTest) {
-        dbPath = ':memory:';
-      } else {
-        dbPath = DEFAULT_DB_PATH;
-      }
+    // 1. Selesaikan resolusi path efektif terlebih dahulu
+    let effectivePath;
+    if (dbPath !== undefined && dbPath !== null) {
+      effectivePath = dbPath;
+    } else if (process.env.INDEX_DB_PATH) {
+      effectivePath = process.env.INDEX_DB_PATH;
+    } else if (isTest) {
+      effectivePath = ':memory:';
     } else {
-      const resolved = dbPath !== ':memory:' ? path.resolve(dbPath) : ':memory:';
-      if (resolved === DEFAULT_DB_PATH && isTest && !process.env.ALLOW_DEFAULT_DB_IN_TEST) {
-        throw new Error(`[Security Violation] Direct access to default database '${DEFAULT_DB_PATH}' is strictly prohibited during test execution.`);
-      }
+      effectivePath = DEFAULT_DB_PATH;
     }
 
-    this.dbPath = dbPath;
+    // 2. Dalam lingkungan test, tolak akses ke database default melalui seluruh jalur resolusi
+    if (isTest && isDefaultDbPath(effectivePath)) {
+      throw new Error(`[Security Violation] Direct access to default database '${DEFAULT_DB_PATH}' is strictly prohibited during test execution.`);
+    }
+
+    this.dbPath = effectivePath;
     this.db = null;
     this.init();
   }
@@ -428,5 +461,8 @@ class IndexDB {
 }
 
 IndexDB.DEFAULT_DB_PATH = DEFAULT_DB_PATH;
+IndexDB.canonicalizeDbPath = canonicalizeDbPath;
+IndexDB.isDefaultDbPath = isDefaultDbPath;
+IndexDB.isTestEnvironment = isTestEnvironment;
 
 module.exports = IndexDB;

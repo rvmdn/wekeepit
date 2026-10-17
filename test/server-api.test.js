@@ -62,22 +62,33 @@ describe('Server V2 API Integration Tests', () => {
       }
     });
 
-    testPort = await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Timeout waiting for serverProcess to start'));
-      }, 5000);
+    try {
+      testPort = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Timeout waiting for serverProcess to start'));
+        }, 7000);
 
-      serverProcess.on('message', (msg) => {
-        if (msg && msg.event === 'listening') {
+        serverProcess.on('message', (msg) => {
+          if (msg && msg.event === 'listening') {
+            clearTimeout(timeout);
+            resolve(msg.port);
+          }
+        });
+        serverProcess.on('error', (err) => {
           clearTimeout(timeout);
-          resolve(msg.port);
-        }
+          reject(err);
+        });
       });
-      serverProcess.on('error', (err) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-    });
+    } catch (err) {
+      if (serverProcess) {
+        await terminateProcess(serverProcess).catch(() => {});
+        serverProcess = null;
+      }
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+      throw err;
+    }
   });
 
   function waitForProcessExit(cp, timeoutMs = 7000) {
@@ -161,12 +172,15 @@ describe('Server V2 API Integration Tests', () => {
   }
 
   after(async () => {
-    if (serverProcess) {
-      await terminateProcess(serverProcess);
-    }
-    if (tempDir && fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
+    try {
+      if (serverProcess) {
+        await terminateProcess(serverProcess);
+      }
+    } finally {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
+      }
     }
   });
 

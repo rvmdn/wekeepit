@@ -735,9 +735,16 @@ function createServerApp(options = {}) {
   const originalClose = server.close.bind(server);
   let closePromise = null;
   let isClosed = false;
+  let lastCloseError = null;
 
   function close(callback) {
     if (isClosed) {
+      if (lastCloseError) {
+        if (typeof callback === 'function') {
+          process.nextTick(() => callback(lastCloseError));
+        }
+        return Promise.reject(lastCloseError);
+      }
       if (typeof callback === 'function') {
         process.nextTick(() => callback(null));
       }
@@ -746,7 +753,10 @@ function createServerApp(options = {}) {
 
     if (closePromise) {
       if (typeof callback === 'function') {
-        closePromise.then(() => callback(null), (err) => callback(err));
+        closePromise.then(
+          () => callback(null),
+          (err) => callback(err)
+        );
       }
       return closePromise;
     }
@@ -764,24 +774,48 @@ function createServerApp(options = {}) {
       };
 
       closeHttpServer((serverErr) => {
-        try {
-          folderManager.stopAllWatchers();
-        } catch (e) {}
+        const shutdownErrors = [];
+        if (serverErr) {
+          shutdownErrors.push(serverErr);
+        }
 
+        // 2. File-system watchers dihentikan (tetap dijalankan meski serverErr terjadi)
+        try {
+          if (folderManager && typeof folderManager.stopAllWatchers === 'function') {
+            folderManager.stopAllWatchers();
+          }
+        } catch (watcherErr) {
+          shutdownErrors.push(watcherErr);
+        }
+
+        // 3. Database ditutup (tetap dijalankan meski watcherErr terjadi)
         try {
           if (db && typeof db.close === 'function') {
             db.close();
           }
-        } catch (e) {}
+        } catch (dbErr) {
+          shutdownErrors.push(dbErr);
+        }
 
         isClosed = true;
 
-        if (serverErr) {
-          if (typeof callback === 'function') callback(serverErr);
-          return reject(serverErr);
+        if (shutdownErrors.length > 0) {
+          const combinedError = shutdownErrors.length === 1
+            ? shutdownErrors[0]
+            : (typeof AggregateError === 'function'
+                ? new AggregateError(shutdownErrors, `Shutdown encountered ${shutdownErrors.length} errors: ${shutdownErrors.map(e => e.message || String(e)).join('; ')}`)
+                : Object.assign(new Error(`Shutdown errors: ${shutdownErrors.map(e => e.message || String(e)).join('; ')}`), { errors: shutdownErrors }));
+
+          lastCloseError = combinedError;
+          if (typeof callback === 'function') {
+            callback(combinedError);
+          }
+          return reject(combinedError);
         }
 
-        if (typeof callback === 'function') callback(null);
+        if (typeof callback === 'function') {
+          callback(null);
+        }
         resolve();
       });
     });

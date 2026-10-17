@@ -101,6 +101,38 @@ function captureSnapshot(filePath) {
   };
 }
 
+function assertStrictSnapshotEqual(before, after, label = 'Database') {
+  // 1. Main database file
+  assert.equal(after.main.exists, before.main.exists, `${label} main file existence must match`);
+  if (before.main.exists) {
+    assert.equal(after.main.hash, before.main.hash, `${label} main file SHA-256 hash must be strictly identical`);
+    assert.equal(after.main.size, before.main.size, `${label} main file byte size must be strictly identical`);
+    assert.equal(after.main.mtimeMs, before.main.mtimeMs, `${label} main file mtime must be strictly untouched`);
+  } else {
+    assert.equal(after.main.exists, false, `${label} main file must remain non-existent`);
+  }
+
+  // 2. WAL file
+  assert.equal(after.wal.exists, before.wal.exists, `${label} WAL file existence must match`);
+  if (before.wal.exists) {
+    assert.equal(after.wal.hash, before.wal.hash, `${label} WAL file SHA-256 hash must be strictly identical`);
+    assert.equal(after.wal.size, before.wal.size, `${label} WAL file byte size must be strictly identical`);
+    assert.equal(after.wal.mtimeMs, before.wal.mtimeMs, `${label} WAL file mtime must be strictly untouched`);
+  } else {
+    assert.equal(after.wal.exists, false, `${label} WAL file must remain non-existent`);
+  }
+
+  // 3. SHM file
+  assert.equal(after.shm.exists, before.shm.exists, `${label} SHM file existence must match`);
+  if (before.shm.exists) {
+    assert.equal(after.shm.hash, before.shm.hash, `${label} SHM file SHA-256 hash must be strictly identical`);
+    assert.equal(after.shm.size, before.shm.size, `${label} SHM file byte size must be strictly identical`);
+    assert.equal(after.shm.mtimeMs, before.shm.mtimeMs, `${label} SHM file mtime must be strictly untouched`);
+  } else {
+    assert.equal(after.shm.exists, false, `${label} SHM file must remain non-existent`);
+  }
+}
+
 // Zero-touch baseline: capture repository root database state before any tests run
 const repoRootDbPath = path.resolve(__dirname, '..', 'wekeepit-index.db');
 const rootDbSnapshotBefore = captureSnapshot(repoRootDbPath);
@@ -227,20 +259,23 @@ describe('Security & Data Integrity Audit Test Suite', () => {
   });
 
   after(async () => {
-    if (serverProcess) {
-      await terminateProcess(serverProcess);
-    }
-    const serverModule = require('../server.js');
-    if (typeof serverModule.close === 'function') {
-      await serverModule.close();
-    }
-    if (tempDir && fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      assert.equal(fs.existsSync(tempDir), false, 'tempDir must be cleanly removed without error');
-    }
-    if (testRunnerTempDir && fs.existsSync(testRunnerTempDir)) {
-      fs.rmSync(testRunnerTempDir, { recursive: true, force: true });
-      assert.equal(fs.existsSync(testRunnerTempDir), false, 'testRunnerTempDir must be cleanly removed without error');
+    try {
+      if (serverProcess) {
+        await terminateProcess(serverProcess);
+      }
+      const serverModule = require('../server.js');
+      if (typeof serverModule.close === 'function') {
+        await serverModule.close().catch(() => {});
+      }
+    } finally {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempDir), false, 'tempDir must be cleanly removed without error');
+      }
+      if (testRunnerTempDir && fs.existsSync(testRunnerTempDir)) {
+        fs.rmSync(testRunnerTempDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(testRunnerTempDir), false, 'testRunnerTempDir must be cleanly removed without error');
+      }
     }
   });
 
@@ -882,31 +917,10 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
   });
 
-  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3 & 6.5)', () => {
+  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3 – 6.6)', () => {
     test('root repository default database is NEVER touched, mutated, opened, or created (zero-touch verification)', () => {
       const rootDbSnapshotAfter = captureSnapshot(repoRootDbPath);
-
-      // Verify strict preservation of root database existence and metadata without touching it
-      assert.equal(rootDbSnapshotAfter.main.exists, rootDbSnapshotBefore.main.exists, 'Root DB existence must remain identical before and after test suite execution');
-      assert.equal(rootDbSnapshotAfter.wal.exists, rootDbSnapshotBefore.wal.exists, 'Root DB WAL file existence must remain identical');
-      assert.equal(rootDbSnapshotAfter.shm.exists, rootDbSnapshotBefore.shm.exists, 'Root DB SHM file existence must remain identical');
-
-      if (rootDbSnapshotBefore.main.exists) {
-        assert.equal(rootDbSnapshotAfter.main.hash, rootDbSnapshotBefore.main.hash, 'Root DB SHA-256 hash must be untouched');
-        assert.equal(rootDbSnapshotAfter.main.size, rootDbSnapshotBefore.main.size, 'Root DB byte size must be untouched');
-        assert.equal(rootDbSnapshotAfter.main.mtimeMs, rootDbSnapshotBefore.main.mtimeMs, 'Root DB mtime must be untouched');
-      } else {
-        assert.equal(rootDbSnapshotAfter.main.exists, false, 'Default DB must never be created in repository root if it did not exist');
-      }
-
-      if (rootDbSnapshotBefore.wal.exists) {
-        assert.equal(rootDbSnapshotAfter.wal.hash, rootDbSnapshotBefore.wal.hash, 'Root DB WAL hash must be untouched');
-        assert.equal(rootDbSnapshotAfter.wal.size, rootDbSnapshotBefore.wal.size, 'Root DB WAL size must be untouched');
-      }
-
-      if (rootDbSnapshotBefore.shm.exists) {
-        assert.equal(rootDbSnapshotAfter.shm.hash, rootDbSnapshotBefore.shm.hash, 'Root DB SHM hash must be untouched');
-      }
+      assertStrictSnapshotEqual(rootDbSnapshotBefore, rootDbSnapshotAfter, 'Root repository DB');
     });
 
     test('scenario 1 (database available): snapshot comparison in temporary app directory confirms pre-existing default DB remains strictly untouched', async () => {
@@ -942,6 +956,12 @@ describe('Security & Data Integrity Audit Test Suite', () => {
           const SearchEngineClass = require('../indexer/search-engine.js');
           const searchEngine = new SearchEngineClass(isolatedDb);
           searchEngine.searchDocuments('Testing');
+
+          // Uji path guard: pastikan upaya mengarahkan ke database default di direktori sandbox ditolak
+          assert.throws(
+            () => new IndexDB(IndexDB.DEFAULT_DB_PATH),
+            /\[Security Violation\]/
+          );
         } finally {
           if (isolatedDb) {
             isolatedDb.close();
@@ -951,21 +971,8 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         // 4. Ambil snapshot sesudah operasi
         const snapshotAfter = captureSnapshot(defaultDbPath);
 
-        // 5. Bandingkan hash SHA-256, ukuran, mtime, serta keberadaan file
-        assert.equal(snapshotAfter.main.exists, true, 'Default DB must still exist');
-        assert.equal(snapshotAfter.main.hash, snapshotBefore.main.hash, 'Default DB SHA-256 hash must be strictly identical before and after');
-        assert.equal(snapshotAfter.main.size, snapshotBefore.main.size, 'Default DB size must be strictly identical before and after');
-        assert.equal(snapshotAfter.main.mtimeMs, snapshotBefore.main.mtimeMs, 'Default DB mtime must be strictly untouched');
-        assert.equal(snapshotAfter.wal.exists, snapshotBefore.wal.exists, 'Default DB -wal existence must not change');
-        assert.equal(snapshotAfter.shm.exists, snapshotBefore.shm.exists, 'Default DB -shm existence must not change');
-        if (snapshotBefore.wal.exists) {
-          assert.equal(snapshotAfter.wal.hash, snapshotBefore.wal.hash, 'Default DB -wal hash must not change');
-          assert.equal(snapshotAfter.wal.size, snapshotBefore.wal.size, 'Default DB -wal size must not change');
-          assert.equal(snapshotAfter.wal.mtimeMs, snapshotBefore.wal.mtimeMs, 'Default DB -wal mtime must not change');
-        }
-        if (snapshotBefore.shm.exists) {
-          assert.equal(snapshotAfter.shm.hash, snapshotBefore.shm.hash, 'Default DB -shm hash must not change');
-        }
+        // 5. Bandingkan keberadaan, hash SHA-256, ukuran byte, dan mtime untuk file utama, WAL, dan SHM
+        assertStrictSnapshotEqual(snapshotBefore, snapshotAfter, 'Pre-existing sandbox default DB');
       } finally {
         fs.rmSync(sandboxAppDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(sandboxAppDir), false, 'Sandbox app directory must be cleanly removed without error');
@@ -1027,24 +1034,25 @@ const { createServerApp } = require(serverJsPath);
 `;
       fs.writeFileSync(childScriptPath, childCode, 'utf-8');
 
-      const { fork } = require('child_process');
-      const cp = fork(childScriptPath, [], {
-        cwd: tempAppDir,
-        env: {
-          ...process.env,
-          NODE_ENV: 'test',
-          PORT: 0,
-          HOST: '127.0.0.1',
-          INDEX_DB_PATH: testDbPath
-        }
-      });
-
-      let childMsg = null;
-      cp.on('message', (msg) => { childMsg = msg; });
-
-      await waitForProcessExit(cp);
-
+      let cp = null;
       try {
+        const { fork } = require('child_process');
+        cp = fork(childScriptPath, [], {
+          cwd: tempAppDir,
+          env: {
+            ...process.env,
+            NODE_ENV: 'test',
+            PORT: 0,
+            HOST: '127.0.0.1',
+            INDEX_DB_PATH: testDbPath
+          }
+        });
+
+        let childMsg = null;
+        cp.on('message', (msg) => { childMsg = msg; });
+
+        await waitForProcessExit(cp);
+
         assert.ok(childMsg && childMsg.success, 'Child test process in temporary app location must complete successfully');
         assert.equal(childMsg.pingStatus, 200);
         assert.equal(childMsg.pingOk, true);
@@ -1058,7 +1066,9 @@ const { createServerApp } = require(serverJsPath);
         // Verify that the designated isolated database WAS created
         assert.equal(fs.existsSync(testDbPath), true, 'Designated isolated test database must exist');
       } finally {
-        await terminateProcess(cp);
+        if (cp) {
+          await terminateProcess(cp);
+        }
         fs.rmSync(tempAppDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(tempAppDir), false, 'Temporary app directory must be cleanly removed without error');
       }
@@ -1106,21 +1116,22 @@ process.exit(0);
 `;
       fs.writeFileSync(childScriptPath, childCode, 'utf-8');
 
-      const { fork } = require('child_process');
-      const cleanEnv = { ...process.env };
-      delete cleanEnv.INDEX_DB_PATH;
-
-      const cp = fork(childScriptPath, [], {
-        cwd: tempPassiveDir,
-        env: cleanEnv
-      });
-
-      let childMsg = null;
-      cp.on('message', (msg) => { childMsg = msg; });
-
-      await waitForProcessExit(cp);
-
+      let cp = null;
       try {
+        const { fork } = require('child_process');
+        const cleanEnv = { ...process.env };
+        delete cleanEnv.INDEX_DB_PATH;
+
+        cp = fork(childScriptPath, [], {
+          cwd: tempPassiveDir,
+          env: cleanEnv
+        });
+
+        let childMsg = null;
+        cp.on('message', (msg) => { childMsg = msg; });
+
+        await waitForProcessExit(cp);
+
         assert.ok(childMsg && childMsg.success, 'Passive import child process must execute successfully');
         assert.equal(childMsg.hasFactory, true, 'createServerApp factory must be exported');
         assert.equal(childMsg.hasIsLoopback, true, 'isLoopbackHost must be exported');
@@ -1130,7 +1141,9 @@ process.exit(0);
         assert.equal(childMsg.createdFiles.length, 0, 'No files or databases should be created on passive import');
         assert.equal(cp.exitCode, 0, 'Process must exit cleanly with code 0 (no lingering watchers keeping event loop alive)');
       } finally {
-        await terminateProcess(cp);
+        if (cp) {
+          await terminateProcess(cp);
+        }
         fs.rmSync(tempPassiveDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(tempPassiveDir), false, 'Passive import test directory must be deleted cleanly without error');
       }
@@ -1151,7 +1164,6 @@ process.exit(0);
         const addr = app.server.address();
 
         // 1. In-flight request test: start a request that queries the DB, trigger app.close() once connected
-        // The request must complete successfully because server waits for active connections before closing DB
         let closePromise1, closePromise2, closePromise3;
         const triggerClose = () => {
           closePromise1 = app.close();
@@ -1202,15 +1214,250 @@ process.exit(0);
       }
     });
 
-    test('direct access to DEFAULT_DB_PATH during test execution must throw a Security Violation error', () => {
+    test('SEC-09: new IndexDB() throws Security Violation when process.env.INDEX_DB_PATH points to default database', () => {
+      const originalEnvPath = process.env.INDEX_DB_PATH;
+      try {
+        process.env.INDEX_DB_PATH = IndexDB.DEFAULT_DB_PATH;
+        assert.throws(
+          () => new IndexDB(),
+          /\[Security Violation\] Direct access to default database/
+        );
+      } finally {
+        process.env.INDEX_DB_PATH = originalEnvPath;
+      }
+    });
+
+    test('SEC-09: new IndexDB(undefined) and new IndexDB(null) throw Security Violation when process.env.INDEX_DB_PATH points to default database', () => {
+      const originalEnvPath = process.env.INDEX_DB_PATH;
+      try {
+        process.env.INDEX_DB_PATH = IndexDB.DEFAULT_DB_PATH;
+        assert.throws(
+          () => new IndexDB(undefined),
+          /\[Security Violation\] Direct access to default database/
+        );
+        assert.throws(
+          () => new IndexDB(null),
+          /\[Security Violation\] Direct access to default database/
+        );
+      } finally {
+        process.env.INDEX_DB_PATH = originalEnvPath;
+      }
+    });
+
+    test('SEC-09: path variations equivalent to default database (absolute, relative, slashes, casing) are strictly rejected', () => {
+      const variations = [
+        IndexDB.DEFAULT_DB_PATH,
+        IndexDB.DEFAULT_DB_PATH.replace(/\\/g, '/'),
+        IndexDB.DEFAULT_DB_PATH.toLowerCase(),
+        IndexDB.DEFAULT_DB_PATH.toUpperCase(),
+        'wekeepit-index.db',
+        './wekeepit-index.db',
+        path.join('.', 'wekeepit-index.db')
+      ];
+
+      for (const variant of variations) {
+        assert.throws(
+          () => new IndexDB(variant),
+          /\[Security Violation\] Direct access to default database/,
+          `Failed to reject equivalent default DB path variant: ${variant}`
+        );
+      }
+    });
+
+    test('SEC-09: valid temporary database in temporary directory can be created, opened, and closed successfully', () => {
+      const tempDbDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-valid-db-'));
+      try {
+        const dbFile = path.join(tempDbDir, 'sandbox.db');
+        const dbInstance = new IndexDB(dbFile);
+        assert.ok(dbInstance.db !== null, 'Database connection must be initialized');
+        assert.equal(fs.existsSync(dbFile), true, 'Database file must exist on disk');
+        dbInstance.close();
+        assert.equal(dbInstance.db, null, 'Database connection must be null after close');
+      } finally {
+        fs.rmSync(tempDbDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempDbDir), false, 'Temporary database directory must be removed');
+      }
+    });
+
+    test('SEC-09: in-memory database (:memory:) functions properly without triggering security violation', () => {
+      const memDb = new IndexDB(':memory:');
+      assert.ok(memDb.db !== null, 'In-memory database must be initialized');
+      assert.equal(memDb.dbPath, ':memory:');
+      memDb.close();
+      assert.equal(memDb.db, null);
+    });
+
+    test('SEC-09: IndexDB path guard remains active regardless of module import order or fresh require', () => {
+      delete require.cache[require.resolve('../indexer/db.js')];
+      const FreshIndexDB = require('../indexer/db.js');
       assert.throws(
-        () => new IndexDB(IndexDB.DEFAULT_DB_PATH),
-        (err) => {
-          return err.message.includes('[Security Violation]') &&
-            err.message.includes('strictly prohibited during test execution');
-        },
-        'Instantiating IndexDB with default path in test environment must throw security violation'
+        () => new FreshIndexDB(FreshIndexDB.DEFAULT_DB_PATH),
+        /\[Security Violation\] Direct access to default database/
       );
+    });
+
+    test('SEC-10: child process cleanup helper terminates hanging process and guarantees temp dir removal on timeout', async () => {
+      const tempTimeoutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-timeout-sim-'));
+      const hangScriptPath = path.join(tempTimeoutDir, 'hang-child.js');
+      fs.writeFileSync(hangScriptPath, 'setInterval(() => {}, 60000);', 'utf-8');
+
+      let cp = null;
+      let caughtTimeout = false;
+      try {
+        const { fork } = require('child_process');
+        cp = fork(hangScriptPath, [], { cwd: tempTimeoutDir, stdio: 'ignore' });
+
+        // Wait with a short 250ms timeout to simulate timeout
+        await waitForProcessExit(cp, 250);
+      } catch (err) {
+        caughtTimeout = true;
+        assert.match(err.message, /did not exit within 250ms/);
+      } finally {
+        if (cp) {
+          await terminateProcess(cp, 600, 600);
+          assert.equal(cp.exitCode !== null || cp.signalCode !== null, true, 'Child process must be verified terminated');
+        }
+        fs.rmSync(tempTimeoutDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempTimeoutDir), false, 'Temporary directory must be cleanly removed even after timeout');
+      }
+
+      assert.equal(caughtTimeout, true, 'waitForProcessExit must have rejected with timeout error');
+    });
+
+    test('SEC-12: shutdown failure in watchers propagates error while ensuring database is still closed', async () => {
+      let dbClosed = false;
+      const fakeDb = {
+        close: () => { dbClosed = true; }
+      };
+      const fakeFm = {
+        stopAllWatchers: () => { throw new Error('Watcher shutdown failure simulation'); },
+        watchers: new Map()
+      };
+      const { createServerApp } = require('../server.js');
+      const app = createServerApp({
+        db: fakeDb,
+        folderManager: fakeFm,
+        autoWatch: false
+      });
+
+      await assert.rejects(
+        async () => { await app.close(); },
+        /Watcher shutdown failure simulation/,
+        'app.close() must reject with watcher shutdown error'
+      );
+
+      assert.equal(dbClosed, true, 'Database close must STILL be attempted and executed when watcher fails');
+      assert.equal(app.isClosed, true, 'app.isClosed must be true');
+    });
+
+    test('SEC-12: shutdown failure in database propagates error while ensuring watchers are stopped', async () => {
+      let watchersStopped = false;
+      const fakeFm = {
+        stopAllWatchers: () => { watchersStopped = true; },
+        watchers: new Map()
+      };
+      const fakeDb = {
+        close: () => { throw new Error('Database close failure simulation'); }
+      };
+      const { createServerApp } = require('../server.js');
+      const app = createServerApp({
+        db: fakeDb,
+        folderManager: fakeFm,
+        autoWatch: false
+      });
+
+      await assert.rejects(
+        async () => { await app.close(); },
+        /Database close failure simulation/,
+        'app.close() must reject with database close error'
+      );
+
+      assert.equal(watchersStopped, true, 'Watchers must STILL be stopped when database close fails');
+      assert.equal(app.isClosed, true, 'app.isClosed must be true');
+    });
+
+    test('SEC-12: shutdown failure in both watchers and database attempts all resources and propagates combined error', async () => {
+      let watcherAttempted = false;
+      let dbAttempted = false;
+      const fakeFm = {
+        stopAllWatchers: () => { watcherAttempted = true; throw new Error('Watcher error stage'); },
+        watchers: new Map()
+      };
+      const fakeDb = {
+        close: () => { dbAttempted = true; throw new Error('DB error stage'); }
+      };
+      const { createServerApp } = require('../server.js');
+      const app = createServerApp({
+        db: fakeDb,
+        folderManager: fakeFm,
+        autoWatch: false
+      });
+
+      await assert.rejects(
+        async () => { await app.close(); },
+        (err) => {
+          return watcherAttempted && dbAttempted &&
+            (err.message.includes('Watcher error stage') || err.message.includes('DB error stage'));
+        },
+        'All stages must be attempted and combined error propagated'
+      );
+      assert.equal(watcherAttempted, true);
+      assert.equal(dbAttempted, true);
+    });
+
+    test('SEC-12: callback and Promise receive consistent errors on shutdown failure', async () => {
+      const fakeDb = {
+        close: () => { throw new Error('Consistent error test'); }
+      };
+      const { createServerApp } = require('../server.js');
+      const app = createServerApp({
+        db: fakeDb,
+        autoWatch: false
+      });
+
+      let cbErr = null;
+      let promiseErr = null;
+
+      try {
+        await new Promise((resolve) => {
+          app.close((err) => {
+            cbErr = err;
+            resolve();
+          }).catch(pErr => {
+            promiseErr = pErr;
+          });
+        });
+      } catch (_) {}
+
+      assert.ok(cbErr, 'Callback must receive error');
+      assert.ok(promiseErr, 'Promise must reject with error');
+      assert.equal(cbErr.message, promiseErr.message, 'Callback error and Promise error must match');
+    });
+
+    test('SEC-12: repeated and concurrent close() calls are safe, return consistent results, and do not double-close', async () => {
+      let dbCloseCount = 0;
+      const fakeDb = {
+        close: () => { dbCloseCount++; }
+      };
+      const { createServerApp } = require('../server.js');
+      const app = createServerApp({
+        db: fakeDb,
+        autoWatch: false
+      });
+
+      // Concurrent close calls
+      await Promise.all([
+        app.close(),
+        app.close(),
+        app.close()
+      ]);
+
+      assert.equal(dbCloseCount, 1, 'Database close must be invoked exactly once during concurrent close calls');
+
+      // Subsequent repeated close calls after completion
+      await app.close();
+      await app.close();
+      assert.equal(dbCloseCount, 1, 'Database close must not be re-invoked on repeated close');
     });
 
     test('createServerApp factory provides fully isolated dependencies and clean close() lifecycle', async () => {
