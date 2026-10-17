@@ -5,6 +5,11 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 
+// Guarantee that the test runner process operates with an isolated temporary database path
+const testRunnerTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-audit-runner-'));
+process.env.NODE_ENV = 'test';
+process.env.INDEX_DB_PATH = path.join(testRunnerTempDir, 'runner-index.db');
+
 const IndexDB = require('../indexer/db.js');
 const { FolderManager } = require('../indexer/folder-manager.js');
 const DocumentIndexer = require('../indexer/document-indexer.js');
@@ -121,13 +126,26 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     fs.writeFileSync(dangerousScriptPath, '@echo off\r\nREM DUMMY BAT', 'utf-8');
   });
 
-  after(() => {
+  after(async () => {
     if (serverProcess) {
-      serverProcess.kill();
+      try {
+        serverProcess.kill();
+      } catch (e) {}
     }
+    try {
+      const serverModule = require('../server.js');
+      if (typeof serverModule.close === 'function') {
+        await serverModule.close();
+      }
+    } catch (e) {}
     if (tempDir && fs.existsSync(tempDir)) {
       try {
         fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (e) {}
+    }
+    if (testRunnerTempDir && fs.existsSync(testRunnerTempDir)) {
+      try {
+        fs.rmSync(testRunnerTempDir, { recursive: true, force: true });
       } catch (e) {}
     }
   });
@@ -223,13 +241,15 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
 
     test('child process spawned with HOST=0.0.0.0 must ignore it and bind socket to 127.0.0.1', async () => {
+      const childDb = path.join(tempDir, 'host-0000.db');
       const { fork } = require('child_process');
       const cp = fork(path.join(__dirname, '..', 'server.js'), [], {
         env: {
           ...process.env,
           HOST: '0.0.0.0',
           PORT: 0,
-          NODE_ENV: 'test'
+          NODE_ENV: 'test',
+          INDEX_DB_PATH: childDb
         }
       });
 
@@ -260,13 +280,15 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
 
     test('child process spawned with HOST=:: must ignore it and bind socket to 127.0.0.1', async () => {
+      const childDb = path.join(tempDir, 'host-ipv6.db');
       const { fork } = require('child_process');
       const cp = fork(path.join(__dirname, '..', 'server.js'), [], {
         env: {
           ...process.env,
           HOST: '::',
           PORT: 0,
-          NODE_ENV: 'test'
+          NODE_ENV: 'test',
+          INDEX_DB_PATH: childDb
         }
       });
 
@@ -755,6 +777,110 @@ describe('Security & Data Integrity Audit Test Suite', () => {
 
       assert.equal(beforeContent, afterContent, 'wekeepit-data.json content must remain untouched');
       assert.equal(beforeStat.size, afterStat.size, 'wekeepit-data.json size must remain identical');
+    });
+  });
+
+  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3)', () => {
+    test('default database in repository root must NOT be modified or touched by test execution', () => {
+      const defaultDbPath = path.resolve(__dirname, '..', 'wekeepit-index.db');
+      if (fs.existsSync(defaultDbPath)) {
+        const stat = fs.statSync(defaultDbPath);
+        assert.ok(stat.size > 0, 'Existing default database fixture must retain its integrity');
+        const walPath = defaultDbPath + '-wal';
+        if (fs.existsSync(walPath)) {
+          const walStat = fs.statSync(walPath);
+          assert.ok(walStat.mtimeMs <= stat.mtimeMs, 'WAL file must not be actively written by tests');
+        }
+      }
+    });
+
+    test('when default database file does not exist, server and test initialization must NOT create it', () => {
+      const sandboxDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-db-isolation-sandbox-'));
+      try {
+        const fakeDefaultPath = path.join(sandboxDir, 'wekeepit-index.db');
+        assert.equal(fs.existsSync(fakeDefaultPath), false, 'Simulated default DB must not exist initially');
+
+        const { createServerApp } = require('../server.js');
+        const testDbPath = path.join(sandboxDir, 'test-isolated.db');
+        const app = createServerApp({ dbPath: testDbPath, baseDir: sandboxDir });
+
+        assert.equal(fs.existsSync(fakeDefaultPath), false, 'Default DB file must NOT be created');
+        assert.equal(fs.existsSync(testDbPath), true, 'Isolated test DB must be created');
+
+        app.close();
+      } finally {
+        fs.rmSync(sandboxDir, { recursive: true, force: true });
+      }
+    });
+
+    test('direct access to DEFAULT_DB_PATH during test execution must throw a Security Violation error', () => {
+      assert.throws(
+        () => new IndexDB(IndexDB.DEFAULT_DB_PATH),
+        (err) => {
+          return err.message.includes('[Security Violation]') &&
+            err.message.includes('strictly prohibited during test execution');
+        },
+        'Instantiating IndexDB with default path in test environment must throw security violation'
+      );
+    });
+
+    test('passive import of server.js must NOT initialize watchers or open default database', () => {
+      const serverModule = require('../server.js');
+      assert.equal(typeof serverModule.createServerApp, 'function');
+      assert.equal(typeof serverModule.isLoopbackHost, 'function');
+      assert.equal(typeof serverModule.resolveLoopbackHost, 'function');
+      assert.equal(typeof serverModule.validateLoopbackHost, 'function');
+      const fm = serverModule.folderManager;
+      assert.equal(fm.watchers.size, 0, 'Passive import must have 0 active filesystem watchers');
+    });
+
+    test('createServerApp factory provides fully isolated dependencies and clean close() lifecycle', async () => {
+      const isolatedTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-factory-test-'));
+      try {
+        const { createServerApp } = require('../server.js');
+        const dbPath = path.join(isolatedTemp, 'factory-isolated.db');
+        const dataPath = path.join(isolatedTemp, 'data.json');
+        const schemaPath = path.join(isolatedTemp, 'schema.json');
+
+        const app = createServerApp({
+          dbPath,
+          dataFile: dataPath,
+          schemaFile: schemaPath,
+          baseDir: isolatedTemp,
+          autoWatch: false
+        });
+
+        assert.ok(app.server, 'app.server must exist');
+        assert.ok(app.db, 'app.db must exist');
+        assert.equal(app.db.dbPath, dbPath);
+        assert.equal(fs.existsSync(dbPath), true, 'Isolated DB must exist');
+
+        await new Promise(resolve => app.server.listen(0, resolve));
+        const addr = app.server.address();
+        assert.equal(addr.address, '127.0.0.1');
+
+        const pingRes = await new Promise((resolve, reject) => {
+          http.get(`http://127.0.0.1:${addr.port}/api/ping`, (res) => {
+            let data = '';
+            res.on('data', chunk => { data += chunk; });
+            res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(data) }));
+          }).on('error', reject);
+        });
+        assert.equal(pingRes.status, 200);
+        assert.equal(pingRes.body.status, 'ok');
+
+        await app.close();
+        assert.equal(app.db.db, null, 'SQLite database must be closed and set to null');
+        assert.equal(app.folderManager.watchers.size, 0, 'All watchers must be cleared');
+      } finally {
+        fs.rmSync(isolatedTemp, { recursive: true, force: true });
+      }
+    });
+
+    test('all server test processes must operate with isolated temporary database paths', () => {
+      assert.ok(process.env.INDEX_DB_PATH, 'INDEX_DB_PATH must be set in test environment');
+      assert.ok(process.env.INDEX_DB_PATH.startsWith(os.tmpdir()), 'INDEX_DB_PATH must be in os.tmpdir()');
+      assert.ok(tempDir.startsWith(os.tmpdir()), 'tempDir must be in os.tmpdir()');
     });
   });
 });

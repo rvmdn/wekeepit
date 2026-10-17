@@ -2,10 +2,33 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
-const DEFAULT_DB_PATH = path.join(__dirname, '..', 'wekeepit-index.db');
+const DEFAULT_DB_PATH = path.resolve(__dirname, '..', 'wekeepit-index.db');
+
+function isTestEnvironment() {
+  return process.env.NODE_ENV === 'test' ||
+    process.env.TEST_MODE === '1' ||
+    process.argv.some(arg => typeof arg === 'string' && (arg.includes('test') || arg === '--test'));
+}
 
 class IndexDB {
-  constructor(dbPath = DEFAULT_DB_PATH) {
+  constructor(dbPath) {
+    const isTest = isTestEnvironment();
+
+    if (dbPath === undefined || dbPath === null) {
+      if (process.env.INDEX_DB_PATH) {
+        dbPath = process.env.INDEX_DB_PATH;
+      } else if (isTest) {
+        dbPath = ':memory:';
+      } else {
+        dbPath = DEFAULT_DB_PATH;
+      }
+    } else {
+      const resolved = dbPath !== ':memory:' ? path.resolve(dbPath) : ':memory:';
+      if (resolved === DEFAULT_DB_PATH && isTest && !process.env.ALLOW_DEFAULT_DB_IN_TEST) {
+        throw new Error(`[Security Violation] Direct access to default database '${DEFAULT_DB_PATH}' is strictly prohibited during test execution.`);
+      }
+    }
+
     this.dbPath = dbPath;
     this.db = null;
     this.init();
@@ -403,5 +426,7 @@ class IndexDB {
     }
   }
 }
+
+IndexDB.DEFAULT_DB_PATH = DEFAULT_DB_PATH;
 
 module.exports = IndexDB;

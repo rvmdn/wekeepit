@@ -2,17 +2,23 @@ const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('http');
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
 describe('Server V2 API Integration Tests', () => {
-  // We can launch server.js in a separate child process on port 4329 to avoid port conflicts
+  // We can launch server.js in a separate child process on dynamic port with isolated temp database
   let serverProcess;
   let testPort = 0;
+  let tempDir;
+  let tempDbPath;
 
-  const request = (path, method = 'GET', body = null) => {
+  const request = (reqPath, method = 'GET', body = null) => {
     return new Promise((resolve, reject) => {
       const options = {
         hostname: '127.0.0.1',
         port: testPort,
-        path,
+        path: reqPath,
         method,
         headers: {
           'Content-Type': 'application/json'
@@ -42,9 +48,18 @@ describe('Server V2 API Integration Tests', () => {
   };
 
   before(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-server-api-'));
+    tempDbPath = path.join(tempDir, 'server-api-test.db');
+
     const { fork } = require('child_process');
-    serverProcess = fork(require('path').join(__dirname, '..', 'server.js'), [], {
-      env: { ...process.env, PORT: 0, HOST: '127.0.0.1', NODE_ENV: 'test' }
+    serverProcess = fork(path.join(__dirname, '..', 'server.js'), [], {
+      env: {
+        ...process.env,
+        PORT: 0,
+        HOST: '127.0.0.1',
+        NODE_ENV: 'test',
+        INDEX_DB_PATH: tempDbPath
+      }
     });
 
     testPort = await new Promise((resolve, reject) => {
@@ -67,8 +82,20 @@ describe('Server V2 API Integration Tests', () => {
 
   after(() => {
     if (serverProcess) {
-      serverProcess.kill();
+      try {
+        serverProcess.kill();
+      } catch (e) {}
     }
+    if (tempDir && fs.existsSync(tempDir)) {
+      try {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      } catch (e) {}
+    }
+  });
+
+  test('server child process must be isolated and use temporary database in os.tmpdir()', () => {
+    assert.ok(tempDbPath.startsWith(os.tmpdir()), 'Database path must be inside os.tmpdir()');
+    assert.equal(fs.existsSync(tempDbPath), true, 'Temporary database file must exist');
   });
 
   test('GET /api/ping should return status ok and database stats', async () => {
