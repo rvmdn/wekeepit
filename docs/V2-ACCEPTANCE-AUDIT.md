@@ -4,24 +4,24 @@
 **Auditor:** Senior QA Engineer, Application Security Engineer & Software Architect  
 **Audit Date:** 2026-10-17  
 **Repository:** `https://github.com/rvmdn/wekeepit`  
-**Test Suite Coverage:** 107 tests across 33 suites (100% passing)
+**Test Suite Coverage:** 115 tests across 33 suites (100% passing)
 
 ---
 
 ## 1. Executive Summary
 
-Audit menyeluruh Tahap 6 dan Tahap 6.1 (Real-World Acceptance & Security Audit) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0) dan tinggi (P1) yang berhasil direproduksi—termasuk 3 temuan lanjutan dari code review keamanan—telah diperbaiki secara menyeluruh, diverifikasi dengan regression test otomatis baru (total 107 tests lulus 100%), dan divalidasi tidak menimbulkan regresi terhadap fungsionalitas V1 maupun data pengguna (`wekeepit-data.json`).
+Audit menyeluruh Tahap 6, Tahap 6.1, dan Tahap 6.2 (Real-World Acceptance & Security Audit) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0) dan tinggi (P1) yang berhasil direproduksi—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, dan hardening endpoint buka berkas—telah diselesaikan secara tuntas. Seluruh 115 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan.
 
 ### Metrik Pengujian Otomatis
 
-| Parameter | Kondisi Awal (Baseline) | Pasca Tahap 6 | Pasca Tahap 6.1 (Current) | Status |
-| :--- | :---: | :---: | :---: | :---: |
-| **Total Test Suites** | 19 suites (6 test files) | 32 suites (8 test files) | 33 suites (8 test files) | **+14 suites** |
-| **Total Tests** | 50 tests | 85 tests | 107 tests | **+57 tests** |
-| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | **PASS** |
-| **Failed Tests** | 0 | 0 | 0 | **0 Failures** |
-| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | Cepat & Stabil |
-| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi (0 bytes altered) | Terjaga |
+| Parameter | Kondisi Awal (Baseline) | Pasca Tahap 6 | Pasca Tahap 6.1 | Pasca Tahap 6.2 (Current) | Status |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Total Test Suites** | 19 suites (6 test files) | 32 suites (8 test files) | 33 suites (8 test files) | 33 suites (8 test files) | **+14 suites** |
+| **Total Tests** | 50 tests | 85 tests | 107 tests | 115 tests | **+65 tests** |
+| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | 115 (100%) | **PASS** |
+| **Failed Tests** | 0 | 0 | 0 | 0 | **0 Failures** |
+| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | **0.47 detik** | Signifikan Lebih Cepat |
+| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi (0 bytes altered) | Terjaga |
 
 ---
 
@@ -73,14 +73,16 @@ Audit menyeluruh Tahap 6 dan Tahap 6.1 (Real-World Acceptance & Security Audit) 
   2. CORS dibatasi ke origin lokal (`localhost`, `127.0.0.1`, `file://`, `vscode-webview://`, `tauri://`, `capacitor://`). Origin asing yang mencoba mutasi (POST/PUT/DELETE) atau preflight OPTIONS langsung diblokir dengan HTTP 403.
 - **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest SEC-03: 4 tests passing).
 
-### SEC-05 — Server Network Binding to Local Loopback Only (P1 / Temuan 1)
-- **File & Baris:** `server.js:13`, `server.js:630-638`, `launch-desktop.bat:6,17,22-27`.
-- **Skenario Risiko:** Pemanggilan `server.listen(PORT)` tanpa argumen host mengikat server ke `0.0.0.0` (seluruh interface jaringan). Akibatnya, siapapun di jaringan lokal (LAN/Wi-Fi yang sama) dapat menghubungi HTTP API WeKeepIt jika port terbuka di firewall. Mengandalkan validasi Host header saja tidak cukup untuk menggantikan isolasi layer socket TCP.
-- **Perbaikan:**
-  1. Server HTTP sekarang mengikat secara eksplisit ke `HOST = process.env.HOST || '127.0.0.1'`, memastikan socket TCP hanya menerima koneksi loopback lokal.
-  2. Launcher Windows (`launch-desktop.bat`) diselaraskan ke `http://127.0.0.1:4321` untuk mencegah kegagalan resolusi DNS atau konflik IPv4/IPv6 dual-stack pada PowerShell `Invoke-WebRequest`.
-  3. Modul `server.js` mengekspor konfigurasi `HOST` dan diuji secara independen.
-- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan 1: 3 tests passing).
+### SEC-05 — Server Network Binding to Local Loopback Only (P1 / Temuan 1 & Phase 6.2)
+- **File & Baris:** `server.js:12-45`, `server.js:675-735`, `launch-desktop.bat:6,17,22-27`.
+- **Skenario Risiko:** Pemanggilan `server.listen(PORT)` tanpa host atau membiarkan `HOST=0.0.0.0` / `HOST=::` dievaluasi langsung dapat mengikat server ke seluruh interface jaringan (LAN/Wi-Fi). Mengandalkan validasi Host header saja tidak cukup untuk menggantikan isolasi layer socket TCP.
+- **Perbaikan (Phase 6.1 & Phase 6.2):**
+  1. **Strict Loopback Resolution & Validation:** Ditambahkan fungsi `isLoopbackHost`, `resolveLoopbackHost`, dan `validateLoopbackHost`. Bila lingkungan menyuplai host non-loopback (misal `0.0.0.0`, `::`, `192.168.x.x`), sistem menolaknya secara eksplisit atau mengabaikannya secara aman (*safely ignored*) dengan fallback tetap ke `127.0.0.1`.
+  2. **Socket Layer Enforcement pada `server.listen`:** Pemanggilan `server.listen` (baik positional argument maupun options object) dibungkus (*wrapped*) sehingga setiap upaya mengikat ke host non-loopback otomatis dialihkan ke `127.0.0.1`.
+  3. **Zero Port Conflict IPC Test Architecture:** Server anak uji coba sekarang dapat dijalankan pada port dinamis `PORT: 0`. Saat listen, server memancarkan event IPC `process.send({ event: 'listening', port, address })` sehingga proses pengujian langsung menangkap port dan alamat socket aktual tanpa dependensi port statis atau konflik proses.
+  4. **Pengujian Socket Aktual:** Uji coba dijalankan langsung terhadap instance `server` aktual dari `server.js` (bukan mock server terpisah), memverifikasi bahwa socket TCP benar-benar terikat ke `127.0.0.1` dan memverifikasi request HTTP `/api/ping`.
+  5. **Launcher Windows:** [launch-desktop.bat](file:///E:/Project/Desktop/wekeepit/launch-desktop.bat) diselaraskan ke `http://127.0.0.1:4321` untuk mencegah kegagalan DNS atau konflik IPv4/IPv6 dual-stack.
+- **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan 1 & Phase 6.2: 11 tests passing).
 - **Panduan Verifikasi Alamat Listen pada Windows:**
   Pengguna atau auditor dapat memverifikasi binding loopback server pada Command Prompt atau PowerShell dengan menjalankan:
   ```cmd
@@ -220,14 +222,14 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 
 ## 7. Definition of Done (DoD) Checklist
 
-- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 107/107 tests passed across 33 suites (100% passing).
-- [x] **2. Seluruh area utama diaudit:** Security, network binding, CORS/Origin policy, file launch boundaries, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
+- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 115/115 tests passed across 33 suites (100% passing).
+- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
 - [x] **3. Temuan memiliki severity, bukti, dan langkah reproduksi:** Terdokumentasi lengkap pada laporan ini.
 - [x] **4. Semua P0 dan P1 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SEC-05, SEC-06, SEC-07, SRCH-01, COLL-01 selesai diperbaiki menyeluruh.
-- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-search-and-parsers.test.js` dan `test/audit-security-and-integrity.test.js` diperluas mencakup 100% regresi Phase 6 & Phase 6.1.
+- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-search-and-parsers.test.js` dan `test/audit-security-and-integrity.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, dan Phase 6.2.
 - [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable.
 - [x] **7. Data V1 dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` utuh (0 bytes altered).
-- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi baru serta panduan verifikasi Windows.
+- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi baru serta bukti binding socket aktual.
 - [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi lokal.
 
 ---
@@ -237,10 +239,10 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 Untuk memverifikasi laporan ini secara mandiri:
 
 ```bash
-# 1. Jalankan seluruh test suite otomatis (107 tests, 33 suites)
+# 1. Jalankan seluruh test suite otomatis (115 tests, 33 suites)
 npm test
 
-# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik (41 tests)
+# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik (49 tests)
 node --test test/audit-security-and-integrity.test.js
 
 # 3. Jalankan test audit akurasi search & parser

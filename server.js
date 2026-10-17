@@ -9,8 +9,41 @@ const DocumentIndexer = require('./indexer/document-indexer.js');
 const SearchEngine = require('./indexer/search-engine.js');
 const MetadataEngine = require('./metadata-engine.js');
 
-const PORT = process.env.PORT || 4321;
-const HOST = process.env.HOST || '127.0.0.1'; // Strictly bind to loopback (Temuan 1)
+const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : 4321;
+
+// Loopback Host Resolution and Enforcement (Temuan 1 & Phase 6.2)
+const ALLOWED_LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+function isLoopbackHost(host) {
+  if (!host || typeof host !== 'string') return false;
+  const clean = host.trim().toLowerCase();
+  return ALLOWED_LOOPBACK_HOSTS.has(clean);
+}
+
+function resolveLoopbackHost(candidate, strict = false) {
+  if (isLoopbackHost(candidate)) {
+    const clean = candidate.trim().toLowerCase();
+    // Prioritize 127.0.0.1 for desktop app reliability unless IPv6 loopback is explicitly requested
+    return clean === '::1' ? '::1' : '127.0.0.1';
+  }
+  if (strict) {
+    const err = new Error(`Host '${candidate}' tidak diizinkan: hanya alamat loopback (127.0.0.1, localhost, ::1) yang diterima.`);
+    err.code = 'ERR_INVALID_HOST';
+    throw err;
+  }
+  return '127.0.0.1';
+}
+
+function validateLoopbackHost(host) {
+  if (!isLoopbackHost(host)) {
+    const err = new Error(`Host '${host}' tidak diizinkan: hanya alamat loopback (127.0.0.1, localhost, ::1) yang diterima.`);
+    err.code = 'ERR_INVALID_HOST';
+    throw err;
+  }
+  return true;
+}
+
+const HOST = resolveLoopbackHost(process.env.HOST);
 const DATA_FILE = path.join(__dirname, 'wekeepit-data.json');
 const SCHEMA_FILE = path.join(__dirname, 'metadata-schema.json');
 
@@ -641,10 +674,67 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+// Wrap server.listen to strictly enforce loopback binding even if non-loopback host is passed directly
+const originalListen = server.listen.bind(server);
+
+server.listen = function (...args) {
+  // Support options object signature: server.listen(options[, callback])
+  if (args[0] && typeof args[0] === 'object') {
+    const opts = { ...args[0] };
+    if (opts.host) {
+      if (!isLoopbackHost(opts.host)) {
+        console.warn(`[Security] Host '${opts.host}' bukan loopback. Mengabaikan secara aman dan menggunakan fallback loopback '127.0.0.1'.`);
+        opts.host = '127.0.0.1';
+      } else {
+        opts.host = resolveLoopbackHost(opts.host);
+      }
+    } else {
+      opts.host = HOST;
+    }
+    return originalListen(opts, args[1]);
+  }
+
+  // Positional signature: server.listen(port[, host[, backlog]][, callback])
+  const port = args[0] !== undefined ? args[0] : PORT;
+  let host = HOST;
+  let callback;
+
+  if (typeof args[1] === 'string') {
+    if (!isLoopbackHost(args[1])) {
+      console.warn(`[Security] Host '${args[1]}' bukan loopback. Mengabaikan secara aman dan menggunakan fallback loopback '127.0.0.1'.`);
+      host = '127.0.0.1';
+    } else {
+      host = resolveLoopbackHost(args[1]);
+    }
+    callback = typeof args[2] === 'function' ? args[2] : (typeof args[3] === 'function' ? args[3] : undefined);
+  } else if (typeof args[1] === 'function') {
+    callback = args[1];
+  } else if (typeof args[2] === 'function') {
+    callback = args[2];
+  }
+
+  return originalListen(port, host, callback);
+};
+
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
-    console.log(`WeKeepIt V2 running at: http://${HOST}:${PORT}`);
+    const actualPort = server.address() ? server.address().port : PORT;
+    console.log(`WeKeepIt V2 running at: http://${HOST}:${actualPort}`);
+    if (process.send) {
+      process.send({ event: 'listening', port: actualPort, host: HOST, address: server.address() });
+    }
   });
 }
 
-module.exports = { server, PORT, HOST, db, folderManager, documentIndexer, searchEngine };
+module.exports = {
+  server,
+  PORT,
+  HOST,
+  isLoopbackHost,
+  resolveLoopbackHost,
+  validateLoopbackHost,
+  db,
+  folderManager,
+  documentIndexer,
+  searchEngine
+};

@@ -5,13 +5,13 @@ const http = require('http');
 describe('Server V2 API Integration Tests', () => {
   // We can launch server.js in a separate child process on port 4329 to avoid port conflicts
   let serverProcess;
-  const TEST_PORT = 4329;
+  let testPort = 0;
 
   const request = (path, method = 'GET', body = null) => {
     return new Promise((resolve, reject) => {
       const options = {
-        hostname: 'localhost',
-        port: TEST_PORT,
+        hostname: '127.0.0.1',
+        port: testPort,
         path,
         method,
         headers: {
@@ -44,11 +44,25 @@ describe('Server V2 API Integration Tests', () => {
   before(async () => {
     const { fork } = require('child_process');
     serverProcess = fork(require('path').join(__dirname, '..', 'server.js'), [], {
-      env: { ...process.env, PORT: TEST_PORT }
+      env: { ...process.env, PORT: 0, HOST: '127.0.0.1', NODE_ENV: 'test' }
     });
 
-    // Wait 1.5s for server to start
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    testPort = await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Timeout waiting for serverProcess to start'));
+      }, 5000);
+
+      serverProcess.on('message', (msg) => {
+        if (msg && msg.event === 'listening') {
+          clearTimeout(timeout);
+          resolve(msg.port);
+        }
+      });
+      serverProcess.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
   });
 
   after(() => {

@@ -12,13 +12,14 @@ const DocumentIndexer = require('../indexer/document-indexer.js');
 describe('Security & Data Integrity Audit Test Suite', () => {
   let tempDir;
   let serverProcess;
-  const AUDIT_PORT = 4331;
+  let auditPort = 0;
+  let serverProcessAddress = null;
 
   const request = (reqPath, method = 'GET', body = null, headers = {}) => {
     return new Promise((resolve, reject) => {
       const options = {
         hostname: '127.0.0.1',
-        port: AUDIT_PORT,
+        port: auditPort,
         path: reqPath,
         method,
         headers: {
@@ -69,15 +70,33 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     serverProcess = fork(path.join(__dirname, '..', 'server.js'), [], {
       env: {
         ...process.env,
-        PORT: AUDIT_PORT,
+        PORT: 0,
         HOST: '127.0.0.1',
         INDEX_DB_PATH: testDbPath,
         NODE_ENV: 'test'
       }
     });
 
-    // Wait 1.5s for server to start
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Wait for serverProcess to emit listening message with actual dynamic port
+    const listenInfo = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('Timeout waiting for serverProcess to start listening'));
+      }, 5000);
+
+      serverProcess.on('message', (msg) => {
+        if (msg && msg.event === 'listening') {
+          clearTimeout(timer);
+          resolve(msg);
+        }
+      });
+      serverProcess.on('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+
+    auditPort = listenInfo.port;
+    serverProcessAddress = listenInfo.address;
 
     // Register testDocsDir via API
     const regRes = await request('/api/folders', 'POST', { path: testDocsDir });
@@ -113,19 +132,168 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     }
   });
 
-  describe('Temuan 1: Server Network Binding to Loopback Only', () => {
-    test('server module should export HOST defaulting to 127.0.0.1 (IPv4 loopback)', () => {
-      const { HOST } = require('../server.js');
-      assert.equal(HOST, '127.0.0.1');
+  describe('Temuan 1 & Phase 6.2: Enforce Actual Server Loopback Network Binding', () => {
+    test('isLoopbackHost should accurately identify loopback vs non-loopback hosts', () => {
+      const { isLoopbackHost } = require('../server.js');
+      assert.equal(isLoopbackHost('127.0.0.1'), true);
+      assert.equal(isLoopbackHost('localhost'), true);
+      assert.equal(isLoopbackHost('::1'), true);
+      assert.equal(isLoopbackHost('0.0.0.0'), false);
+      assert.equal(isLoopbackHost('::'), false);
+      assert.equal(isLoopbackHost('192.168.1.10'), false);
+      assert.equal(isLoopbackHost('evil.com'), false);
+      assert.equal(isLoopbackHost(null), false);
+      assert.equal(isLoopbackHost(''), false);
     });
 
-    test('server listen configuration should bind strictly to loopback address 127.0.0.1', async () => {
-      const { HOST } = require('../server.js');
-      const testServer = http.createServer((req, res) => res.end('ok'));
-      await new Promise(resolve => testServer.listen(0, HOST, resolve));
-      const address = testServer.address();
-      assert.equal(address.address, '127.0.0.1');
-      await new Promise(resolve => testServer.close(resolve));
+    test('resolveLoopbackHost should prioritize 127.0.0.1 and safely fallback when given non-loopback hosts', () => {
+      const { resolveLoopbackHost } = require('../server.js');
+      assert.equal(resolveLoopbackHost('127.0.0.1'), '127.0.0.1');
+      assert.equal(resolveLoopbackHost('localhost'), '127.0.0.1');
+      assert.equal(resolveLoopbackHost('::1'), '::1');
+      assert.equal(resolveLoopbackHost('0.0.0.0'), '127.0.0.1');
+      assert.equal(resolveLoopbackHost('::'), '127.0.0.1');
+      assert.equal(resolveLoopbackHost('192.168.1.50'), '127.0.0.1');
+      assert.equal(resolveLoopbackHost(undefined), '127.0.0.1');
+    });
+
+    test('validateLoopbackHost should reject non-loopback hosts with an explicit error', () => {
+      const { validateLoopbackHost } = require('../server.js');
+      assert.equal(validateLoopbackHost('127.0.0.1'), true);
+      assert.equal(validateLoopbackHost('localhost'), true);
+      assert.equal(validateLoopbackHost('::1'), true);
+      assert.throws(() => validateLoopbackHost('0.0.0.0'), /Host '0.0.0.0' tidak diizinkan/);
+      assert.throws(() => validateLoopbackHost('::'), /Host '::' tidak diizinkan/);
+      assert.throws(() => validateLoopbackHost('192.168.1.100'), /Host '192.168.1.100' tidak diizinkan/);
+    });
+
+    test('actual server instance should bind strictly to loopback 127.0.0.1 on listen with dynamic port', async () => {
+      const { server } = require('../server.js');
+      // Listen on ephemeral port 0 to prevent any port collisions
+      await new Promise(resolve => server.listen(0, resolve));
+      const address = server.address();
+      assert.ok(address, 'server.address() must be available');
+      assert.equal(address.address, '127.0.0.1', 'Actual socket must bind to 127.0.0.1');
+      assert.ok(address.port > 0, 'Port must be a valid positive integer');
+
+      // Verify that actual HTTP requests work on this loopback socket
+      const pingRes = await new Promise((resolve, reject) => {
+        http.get(`http://127.0.0.1:${address.port}/api/ping`, (res) => {
+          let data = '';
+          res.on('data', chunk => { data += chunk; });
+          res.on('end', () => {
+            resolve({ status: res.statusCode, body: JSON.parse(data) });
+          });
+        }).on('error', reject);
+      });
+      assert.equal(pingRes.status, 200);
+      assert.equal(pingRes.body.status, 'ok');
+
+      await new Promise(resolve => server.close(resolve));
+    });
+
+    test('actual server instance should safely ignore non-loopback host (0.0.0.0) and enforce 127.0.0.1 socket binding', async () => {
+      const { server } = require('../server.js');
+      await new Promise(resolve => server.listen(0, '0.0.0.0', resolve));
+      const address = server.address();
+      assert.equal(address.address, '127.0.0.1', 'Socket must bind to 127.0.0.1 even when 0.0.0.0 is requested');
+      await new Promise(resolve => server.close(resolve));
+    });
+
+    test('actual server instance should safely ignore non-loopback IPv6 wildcard (::) and enforce 127.0.0.1 socket binding', async () => {
+      const { server } = require('../server.js');
+      await new Promise(resolve => server.listen(0, '::', resolve));
+      const address = server.address();
+      assert.equal(address.address, '127.0.0.1', 'Socket must bind to 127.0.0.1 even when :: is requested');
+      await new Promise(resolve => server.close(resolve));
+    });
+
+    test('actual server instance should safely ignore external IP (192.168.1.1) in options object and enforce 127.0.0.1', async () => {
+      const { server } = require('../server.js');
+      await new Promise(resolve => server.listen({ port: 0, host: '192.168.1.1' }, resolve));
+      const address = server.address();
+      assert.equal(address.address, '127.0.0.1', 'Socket must bind to 127.0.0.1 even when external IP is passed in options');
+      await new Promise(resolve => server.close(resolve));
+    });
+
+    test('isolated background server process should bind socket strictly to 127.0.0.1', () => {
+      assert.ok(serverProcessAddress, 'serverProcessAddress must be captured');
+      assert.equal(serverProcessAddress.address, '127.0.0.1');
+      assert.equal(serverProcessAddress.family, 'IPv4');
+    });
+
+    test('child process spawned with HOST=0.0.0.0 must ignore it and bind socket to 127.0.0.1', async () => {
+      const { fork } = require('child_process');
+      const cp = fork(path.join(__dirname, '..', 'server.js'), [], {
+        env: {
+          ...process.env,
+          HOST: '0.0.0.0',
+          PORT: 0,
+          NODE_ENV: 'test'
+        }
+      });
+
+      const message = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cp.kill();
+          reject(new Error('Timeout waiting for child process listening event'));
+        }, 5000);
+
+        cp.on('message', (msg) => {
+          if (msg && msg.event === 'listening') {
+            clearTimeout(timeout);
+            resolve(msg);
+          }
+        });
+        cp.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+
+      try {
+        assert.equal(message.address.address, '127.0.0.1', 'Spawned child process must bind socket to 127.0.0.1 despite HOST=0.0.0.0');
+        assert.equal(message.host, '127.0.0.1');
+      } finally {
+        cp.kill();
+      }
+    });
+
+    test('child process spawned with HOST=:: must ignore it and bind socket to 127.0.0.1', async () => {
+      const { fork } = require('child_process');
+      const cp = fork(path.join(__dirname, '..', 'server.js'), [], {
+        env: {
+          ...process.env,
+          HOST: '::',
+          PORT: 0,
+          NODE_ENV: 'test'
+        }
+      });
+
+      const message = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cp.kill();
+          reject(new Error('Timeout waiting for child process listening event'));
+        }, 5000);
+
+        cp.on('message', (msg) => {
+          if (msg && msg.event === 'listening') {
+            clearTimeout(timeout);
+            resolve(msg);
+          }
+        });
+        cp.on('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+
+      try {
+        assert.equal(message.address.address, '127.0.0.1', 'Spawned child process must bind socket to 127.0.0.1 despite HOST=::');
+        assert.equal(message.host, '127.0.0.1');
+      } finally {
+        cp.kill();
+      }
     });
 
     test('HTTP requests to 127.0.0.1 loopback should connect successfully', async () => {
@@ -187,7 +355,7 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
 
     test('should allow request with localhost or 127.0.0.1 Host header', async () => {
-      const res = await request('/api/ping', 'GET', null, { Host: `127.0.0.1:${AUDIT_PORT}` });
+      const res = await request('/api/ping', 'GET', null, { Host: `127.0.0.1:${auditPort}` });
       assert.equal(res.status, 200);
       assert.equal(res.data.status, 'ok');
     });
@@ -223,9 +391,9 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
 
     test('should allow request from loopback origin (http://127.0.0.1 or http://localhost)', async () => {
-      const res = await request('/api/ping', 'GET', null, { Origin: `http://127.0.0.1:${AUDIT_PORT}` });
+      const res = await request('/api/ping', 'GET', null, { Origin: `http://127.0.0.1:${auditPort}` });
       assert.equal(res.status, 200);
-      assert.equal(res.headers['access-control-allow-origin'], `http://127.0.0.1:${AUDIT_PORT}`);
+      assert.equal(res.headers['access-control-allow-origin'], `http://127.0.0.1:${auditPort}`);
     });
 
     test('should allow request from official desktop WebView2 origin (https://wekeepit.local)', async () => {
