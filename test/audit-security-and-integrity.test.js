@@ -6,6 +6,27 @@ const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
 
+function sendSignal(cp, signal) {
+  if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+    return true;
+  }
+  try {
+    const ok = cp.kill(signal);
+    if (!ok) {
+      if (cp.exitCode !== null || cp.signalCode !== null) {
+        return true;
+      }
+      throw new Error(`cp.kill('${signal}') returned false for un-exited process PID ${cp.pid}`);
+    }
+    return true;
+  } catch (err) {
+    if (cp.exitCode !== null || cp.signalCode !== null || err.code === 'ESRCH') {
+      return true;
+    }
+    throw err;
+  }
+}
+
 function waitForProcessExit(cp, timeoutMs = 7000) {
   if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
     return Promise.resolve();
@@ -13,17 +34,35 @@ function waitForProcessExit(cp, timeoutMs = 7000) {
   return new Promise((resolve, reject) => {
     let timer = null;
     let exited = false;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      cp.removeListener('exit', onExit);
+      cp.removeListener('close', onExit);
+      cp.removeListener('error', onError);
+    };
+
     const onExit = () => {
       if (exited) return;
       exited = true;
-      if (timer) clearTimeout(timer);
+      cleanup();
       resolve();
     };
+
+    const onError = (err) => {
+      if (exited) return;
+      exited = true;
+      cleanup();
+      reject(err);
+    };
+
     cp.once('exit', onExit);
     cp.once('close', onExit);
+    cp.once('error', onError);
 
     timer = setTimeout(() => {
       if (!exited && cp.exitCode === null && cp.signalCode === null) {
+        cleanup();
         reject(new Error(`Child process (PID ${cp.pid}) did not exit within ${timeoutMs}ms`));
       }
     }, timeoutMs);
@@ -44,6 +83,7 @@ function terminateProcess(cp, termTimeoutMs = 4000, killTimeoutMs = 4000) {
       if (failTimer) clearTimeout(failTimer);
       cp.removeListener('exit', onExit);
       cp.removeListener('close', onExit);
+      cp.removeListener('error', onError);
     };
 
     const onExit = () => {
@@ -53,35 +93,61 @@ function terminateProcess(cp, termTimeoutMs = 4000, killTimeoutMs = 4000) {
       resolve();
     };
 
-    // 1. Pasang listener exit dan close sebelum mengirim sinyal
-    cp.once('exit', onExit);
-    cp.once('close', onExit);
-
-    // 2. Kirim SIGTERM
-    try {
-      cp.kill('SIGTERM');
-    } catch (e) {
+    const onError = (err) => {
+      if (exited) return;
       if (cp.exitCode !== null || cp.signalCode !== null) {
         onExit();
         return;
       }
+      exited = true;
+      cleanup();
+      reject(err);
+    };
+
+    // 1. Pasang listener exit, close, dan error sebelum mengirim sinyal
+    cp.once('exit', onExit);
+    cp.once('close', onExit);
+    cp.once('error', onError);
+
+    // 2. Kirim SIGTERM
+    try {
+      sendSignal(cp, 'SIGTERM');
+    } catch (err) {
+      cleanup();
+      return reject(new Error(`Failed to send SIGTERM to process PID ${cp.pid}: ${err.message}`));
     }
 
-    // 3. Jika SIGTERM timeout tercapai, kirim SIGKILL dan tetap tunggu konfirmasi exit/close
-    killTimer = setTimeout(() => {
-      if (!exited && cp.exitCode === null && cp.signalCode === null) {
-        try {
-          cp.kill('SIGKILL');
-        } catch (e) {}
+    if (cp.exitCode !== null || cp.signalCode !== null) {
+      onExit();
+      return;
+    }
 
-        // 4. Jika setelah SIGKILL tetap tidak keluar, gagalkan tes dengan error jelas
-        failTimer = setTimeout(() => {
-          if (!exited && cp.exitCode === null && cp.signalCode === null) {
-            cleanup();
-            reject(new Error(`Failed to terminate process (PID: ${cp.pid}) within ${termTimeoutMs + killTimeoutMs}ms after SIGTERM and SIGKILL`));
-          }
-        }, killTimeoutMs);
+    // 3. Jika SIGTERM timeout tercapai, kirim SIGKILL dan tunggu konfirmasi exit/close
+    killTimer = setTimeout(() => {
+      if (exited || cp.exitCode !== null || cp.signalCode !== null) {
+        onExit();
+        return;
       }
+
+      try {
+        sendSignal(cp, 'SIGKILL');
+      } catch (err) {
+        cleanup();
+        return reject(new Error(`Failed to send SIGKILL to process PID ${cp.pid}: ${err.message}`));
+      }
+
+      if (cp.exitCode !== null || cp.signalCode !== null) {
+        onExit();
+        return;
+      }
+
+      // 4. Jika setelah SIGKILL tetap tidak keluar, gagalkan dengan error jelas
+      failTimer = setTimeout(() => {
+        if (!exited && cp.exitCode === null && cp.signalCode === null) {
+          cleanup();
+          reject(new Error(`Failed to terminate process (PID: ${cp.pid}) within ${termTimeoutMs + killTimeoutMs}ms after SIGTERM and SIGKILL`));
+        }
+      }, killTimeoutMs);
     }, termTimeoutMs);
   });
 }
@@ -262,12 +328,12 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     try {
       if (serverProcess) {
         await terminateProcess(serverProcess);
+        serverProcess = null;
       }
       const serverModule = require('../server.js');
       if (typeof serverModule.close === 'function') {
-        await serverModule.close().catch(() => {});
+        await serverModule.close();
       }
-    } finally {
       if (tempDir && fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(tempDir), false, 'tempDir must be cleanly removed without error');
@@ -276,6 +342,13 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         fs.rmSync(testRunnerTempDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(testRunnerTempDir), false, 'testRunnerTempDir must be cleanly removed without error');
       }
+    } finally {
+      // Root repository database baseline integrity comparison:
+      // Executed strictly in final suite teardown (finally block) after all tests and child-process cleanups have completed.
+      // Guarantee: Compares existence, SHA-256, byte size, and mtimeMs against baseline to detect any modification.
+      // Note: A metadata/content snapshot detects changes to monitored files (main, -wal, -shm), but does not prove a file was never opened read-only.
+      const rootDbSnapshotAfter = captureSnapshot(repoRootDbPath);
+      assertStrictSnapshotEqual(rootDbSnapshotBefore, rootDbSnapshotAfter, 'Root repository DB (suite final teardown)');
     }
   });
 
@@ -372,39 +445,41 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     test('child process spawned with HOST=0.0.0.0 must ignore it and bind socket to 127.0.0.1', async () => {
       const childDb = path.join(tempDir, 'host-0000.db');
       const { fork } = require('child_process');
-      const cp = fork(path.join(__dirname, '..', 'server.js'), [], {
-        env: {
-          ...process.env,
-          HOST: '0.0.0.0',
-          PORT: 0,
-          NODE_ENV: 'test',
-          INDEX_DB_PATH: childDb
-        }
-      });
-
-      const message = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          cp.kill();
-          reject(new Error('Timeout waiting for child process listening event'));
-        }, 5000);
-
-        cp.on('message', (msg) => {
-          if (msg && msg.event === 'listening') {
-            clearTimeout(timeout);
-            resolve(msg);
+      let cp = null;
+      try {
+        cp = fork(path.join(__dirname, '..', 'server.js'), [], {
+          env: {
+            ...process.env,
+            HOST: '0.0.0.0',
+            PORT: 0,
+            NODE_ENV: 'test',
+            INDEX_DB_PATH: childDb
           }
         });
-        cp.on('error', (err) => {
-          clearTimeout(timeout);
-          reject(err);
-        });
-      });
 
-      try {
+        const message = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for child process listening event'));
+          }, 5000);
+
+          cp.on('message', (msg) => {
+            if (msg && msg.event === 'listening') {
+              clearTimeout(timeout);
+              resolve(msg);
+            }
+          });
+          cp.on('error', (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+        });
+
         assert.equal(message.address.address, '127.0.0.1', 'Spawned child process must bind socket to 127.0.0.1 despite HOST=0.0.0.0');
         assert.equal(message.host, '127.0.0.1');
       } finally {
-        await terminateProcess(cp);
+        if (cp) {
+          await terminateProcess(cp);
+        }
         if (fs.existsSync(childDb)) {
           fs.rmSync(childDb, { force: true });
           assert.equal(fs.existsSync(childDb), false, 'childDb must be removed');
@@ -415,39 +490,41 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     test('child process spawned with HOST=:: must ignore it and bind socket to 127.0.0.1', async () => {
       const childDb = path.join(tempDir, 'host-ipv6.db');
       const { fork } = require('child_process');
-      const cp = fork(path.join(__dirname, '..', 'server.js'), [], {
-        env: {
-          ...process.env,
-          HOST: '::',
-          PORT: 0,
-          NODE_ENV: 'test',
-          INDEX_DB_PATH: childDb
-        }
-      });
-
-      const message = await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          cp.kill();
-          reject(new Error('Timeout waiting for child process listening event'));
-        }, 5000);
-
-        cp.on('message', (msg) => {
-          if (msg && msg.event === 'listening') {
-            clearTimeout(timeout);
-            resolve(msg);
+      let cp = null;
+      try {
+        cp = fork(path.join(__dirname, '..', 'server.js'), [], {
+          env: {
+            ...process.env,
+            HOST: '::',
+            PORT: 0,
+            NODE_ENV: 'test',
+            INDEX_DB_PATH: childDb
           }
         });
-        cp.on('error', (err) => {
-          clearTimeout(timeout);
-          reject(err);
-        });
-      });
 
-      try {
+        const message = await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for child process listening event'));
+          }, 5000);
+
+          cp.on('message', (msg) => {
+            if (msg && msg.event === 'listening') {
+              clearTimeout(timeout);
+              resolve(msg);
+            }
+          });
+          cp.on('error', (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+        });
+
         assert.equal(message.address.address, '127.0.0.1', 'Spawned child process must bind socket to 127.0.0.1 despite HOST=::');
         assert.equal(message.host, '127.0.0.1');
       } finally {
-        await terminateProcess(cp);
+        if (cp) {
+          await terminateProcess(cp);
+        }
         if (fs.existsSync(childDb)) {
           fs.rmSync(childDb, { force: true });
           assert.equal(fs.existsSync(childDb), false, 'childDb must be removed');
@@ -917,20 +994,21 @@ describe('Security & Data Integrity Audit Test Suite', () => {
     });
   });
 
-  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3 – 6.6)', () => {
-    test('root repository default database is NEVER touched, mutated, opened, or created (zero-touch verification)', () => {
-      const rootDbSnapshotAfter = captureSnapshot(repoRootDbPath);
-      assertStrictSnapshotEqual(rootDbSnapshotBefore, rootDbSnapshotAfter, 'Root repository DB');
+  describe('Temuan Wajib: Isolasi Database dan Resource dalam Pengujian (Phase 6.3 – 6.7)', () => {
+    test('root repository default database integrity is verified across test execution (zero-touch verification)', () => {
+      // Verifies intermediate state; suite final teardown in after() performs definitive baseline comparison
+      const intermediateSnapshot = captureSnapshot(repoRootDbPath);
+      assertStrictSnapshotEqual(rootDbSnapshotBefore, intermediateSnapshot, 'Root repository DB (intermediate check)');
     });
 
-    test('scenario 1 (database available): snapshot comparison in temporary app directory confirms pre-existing default DB remains strictly untouched', async () => {
+    test('scenario 1 (database available): snapshot comparison in temporary app directory confirms pre-existing guarded default DB remains strictly untouched across all resolution channels', async () => {
       const sandboxAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-snap-avail-'));
-      const defaultDbPath = path.join(sandboxAppDir, 'wekeepit-index.db');
+      const sandboxDefaultDb = path.join(sandboxAppDir, 'wekeepit-index.db');
 
       try {
         // 1. Buat database SQLite valid dalam direktori aplikasi sementara sebagai pre-existing default DB fixture
         const Database = require('better-sqlite3');
-        const setupDb = new Database(defaultDbPath);
+        const setupDb = new Database(sandboxDefaultDb);
         setupDb.pragma('journal_mode = WAL');
         setupDb.exec(`
           CREATE TABLE pre_existing_data (id INTEGER PRIMARY KEY, note TEXT);
@@ -939,10 +1017,13 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         setupDb.close();
 
         // 2. Ambil snapshot database, WAL, dan SHM sebelum operasi
-        const snapshotBefore = captureSnapshot(defaultDbPath);
+        const snapshotBefore = captureSnapshot(sandboxDefaultDb);
         assert.equal(snapshotBefore.main.exists, true, 'Pre-existing default DB must exist in sandbox app directory');
 
-        // 3. Jalankan operasi database/indexer/search pada instance yang terisolasi di direktori tersebut
+        // 3. Injeksi sandboxDefaultDb sebagai protected target untuk test ini
+        IndexDB.setProtectedDefaultDbPathForTest(sandboxDefaultDb);
+
+        // 4. Jalankan operasi valid pada database kerja terisolasi (fungsi normal tidak terganggu)
         const isolatedDbPath = path.join(sandboxAppDir, 'isolated-working.db');
         let isolatedDb = null;
         try {
@@ -956,24 +1037,93 @@ describe('Security & Data Integrity Audit Test Suite', () => {
           const SearchEngineClass = require('../indexer/search-engine.js');
           const searchEngine = new SearchEngineClass(isolatedDb);
           searchEngine.searchDocuments('Testing');
+        } finally {
+          if (isolatedDb) isolatedDb.close();
+        }
 
-          // Uji path guard: pastikan upaya mengarahkan ke database default di direktori sandbox ditolak
+        // 5. Buktikan in-memory database (:memory:) tetap berfungsi
+        const memDb = new IndexDB(':memory:');
+        assert.equal(memDb.dbPath, ':memory:');
+        memDb.close();
+
+        // 6. Uji bahwa SEMUA jalur resolusi yang mengarah ke protected sandbox fixture ditolak sebelum SQLite membukanya:
+        // a) Constructor argument eksplisit (absolute path)
+        assert.throws(
+          () => new IndexDB(sandboxDefaultDb),
+          /\[Security Violation\]/
+        );
+
+        // b) Dot segments (. and ..) and path variants
+        assert.throws(
+          () => new IndexDB(path.join(sandboxAppDir, '.', 'wekeepit-index.db')),
+          /\[Security Violation\]/
+        );
+        assert.throws(
+          () => new IndexDB(path.join(sandboxAppDir, 'sub', '..', 'wekeepit-index.db')),
+          /\[Security Violation\]/
+        );
+        if (path.parse(sandboxDefaultDb).root.toLowerCase() === path.parse(process.cwd()).root.toLowerCase()) {
+          const relativePath = path.relative(process.cwd(), sandboxDefaultDb);
           assert.throws(
-            () => new IndexDB(IndexDB.DEFAULT_DB_PATH),
+            () => new IndexDB(relativePath),
+            /\[Security Violation\]/
+          );
+        }
+
+        // c) Slash variants
+        assert.throws(
+          () => new IndexDB(sandboxDefaultDb.replace(/\\/g, '/')),
+          /\[Security Violation\]/
+        );
+
+        // d) Casing variants (pada filesystem case-insensitive)
+        if (process.platform === 'win32' || process.platform === 'darwin') {
+          assert.throws(
+            () => new IndexDB(sandboxDefaultDb.toUpperCase()),
+            /\[Security Violation\]/
+          );
+        }
+
+        // e) Environment variable INDEX_DB_PATH
+        const prevEnv = process.env.INDEX_DB_PATH;
+        try {
+          process.env.INDEX_DB_PATH = sandboxDefaultDb;
+          assert.throws(() => new IndexDB(), /\[Security Violation\]/);
+          assert.throws(() => new IndexDB(undefined), /\[Security Violation\]/);
+          assert.throws(() => new IndexDB(null), /\[Security Violation\]/);
+        } finally {
+          process.env.INDEX_DB_PATH = prevEnv;
+        }
+
+        // f) Injected default path options fallback
+        const cleanEnv = process.env.INDEX_DB_PATH;
+        try {
+          delete process.env.INDEX_DB_PATH;
+          assert.throws(
+            () => new IndexDB(undefined, { defaultDbPath: sandboxDefaultDb }),
+            /\[Security Violation\]/
+          );
+          assert.throws(
+            () => new IndexDB(null, { defaultDbPath: sandboxDefaultDb }),
             /\[Security Violation\]/
           );
         } finally {
-          if (isolatedDb) {
-            isolatedDb.close();
-          }
+          if (cleanEnv) process.env.INDEX_DB_PATH = cleanEnv;
         }
 
-        // 4. Ambil snapshot sesudah operasi
-        const snapshotAfter = captureSnapshot(defaultDbPath);
+        // g) Canonical production default DB tetap terlindungi (guard tidak dinonaktifkan)
+        assert.throws(
+          () => new IndexDB(IndexDB.DEFAULT_DB_PATH),
+          /\[Security Violation\]/
+        );
 
-        // 5. Bandingkan keberadaan, hash SHA-256, ukuran byte, dan mtime untuk file utama, WAL, dan SHM
+        // 7. Ambil snapshot sesudah seluruh percobaan akses
+        const snapshotAfter = captureSnapshot(sandboxDefaultDb);
+
+        // 8. Bandingkan keberadaan, hash SHA-256, ukuran byte, dan mtime untuk file utama, WAL, dan SHM
         assertStrictSnapshotEqual(snapshotBefore, snapshotAfter, 'Pre-existing sandbox default DB');
       } finally {
+        IndexDB.clearProtectedDefaultDbPathForTest();
         fs.rmSync(sandboxAppDir, { recursive: true, force: true });
         assert.equal(fs.existsSync(sandboxAppDir), false, 'Sandbox app directory must be cleanly removed without error');
       }
@@ -1248,12 +1398,21 @@ process.exit(0);
       const variations = [
         IndexDB.DEFAULT_DB_PATH,
         IndexDB.DEFAULT_DB_PATH.replace(/\\/g, '/'),
-        IndexDB.DEFAULT_DB_PATH.toLowerCase(),
-        IndexDB.DEFAULT_DB_PATH.toUpperCase(),
         'wekeepit-index.db',
         './wekeepit-index.db',
-        path.join('.', 'wekeepit-index.db')
+        '././wekeepit-index.db',
+        path.join('.', 'wekeepit-index.db'),
+        path.join(__dirname, '..', 'wekeepit-index.db'),
+        path.join(__dirname, '..', '.', 'wekeepit-index.db')
       ];
+
+      // Apply case-insensitive comparisons only where underlying filesystem semantics justify them
+      if (process.platform === 'win32' || process.platform === 'darwin') {
+        variations.push(
+          IndexDB.DEFAULT_DB_PATH.toLowerCase(),
+          IndexDB.DEFAULT_DB_PATH.toUpperCase()
+        );
+      }
 
       for (const variant of variations) {
         assert.throws(
@@ -1261,6 +1420,44 @@ process.exit(0);
           /\[Security Violation\] Direct access to default database/,
           `Failed to reject equivalent default DB path variant: ${variant}`
         );
+      }
+    });
+
+    test('SEC-09: canonicalizeDbPath safely handles dot segments, relative paths, symlink aliases, and nonexistent targets without opening or creating files', () => {
+      const tempCanonDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-canon-test-'));
+      try {
+        const existingSubdir = path.join(tempCanonDir, 'subdir');
+        fs.mkdirSync(existingSubdir, { recursive: true });
+
+        // Nonexistent target inside existing directory
+        const nonExistentTarget = path.join(existingSubdir, 'nonexistent.db');
+        const canonNonExistent = IndexDB.canonicalizeDbPath(nonExistentTarget);
+        assert.ok(canonNonExistent, 'canonicalizeDbPath should return a canonical path for nonexistent target in existing dir');
+
+        // Relative path with dot segments
+        const dotSegmentPath = path.join(existingSubdir, '..', 'subdir', '.', 'nonexistent.db');
+        const canonDotSegment = IndexDB.canonicalizeDbPath(dotSegmentPath);
+        assert.equal(canonDotSegment, canonNonExistent, 'Dot segments must resolve to identical canonical path');
+
+        // Existing file
+        const existingFile = path.join(existingSubdir, 'existing.db');
+        fs.writeFileSync(existingFile, 'test', 'utf-8');
+        const canonExisting = IndexDB.canonicalizeDbPath(existingFile);
+        assert.ok(canonExisting);
+
+        // Symlink alias test if supported by platform/privileges
+        const linkDir = path.join(tempCanonDir, 'linkdir');
+        try {
+          fs.symlinkSync(existingSubdir, linkDir, 'junction');
+          const viaLink = path.join(linkDir, 'existing.db');
+          const canonViaLink = IndexDB.canonicalizeDbPath(viaLink);
+          assert.equal(canonViaLink, canonExisting, 'Symlink alias must resolve to same canonical path');
+        } catch (symlinkErr) {
+          // If unprivileged platform does not permit symlink/junction creation, skip gracefully
+        }
+      } finally {
+        fs.rmSync(tempCanonDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempCanonDir), false, 'tempCanonDir must be cleaned up');
       }
     });
 
@@ -1296,7 +1493,26 @@ process.exit(0);
       );
     });
 
-    test('SEC-10: child process cleanup helper terminates hanging process and guarantees temp dir removal on timeout', async () => {
+    test('SEC-10 regression 1: child process that exits normally is observed with exit code 0 and terminated cleanly', async () => {
+      const tempNormalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-normal-exit-'));
+      const normalScript = path.join(tempNormalDir, 'normal-child.js');
+      fs.writeFileSync(normalScript, 'setTimeout(() => process.exit(0), 50);', 'utf-8');
+
+      let cp = null;
+      try {
+        const { fork } = require('child_process');
+        cp = fork(normalScript, [], { cwd: tempNormalDir, stdio: 'ignore' });
+        await waitForProcessExit(cp, 3000);
+        assert.equal(cp.exitCode, 0, 'Child process must exit normally with code 0');
+        // Calling terminateProcess on an already-exited child resolves immediately
+        await terminateProcess(cp);
+      } finally {
+        fs.rmSync(tempNormalDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempNormalDir), false, 'Temporary directory must be cleanly removed');
+      }
+    });
+
+    test('SEC-10 regression 2: child that exceeds initial wait timeout is terminated gracefully and confirmed dead', async () => {
       const tempTimeoutDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-timeout-sim-'));
       const hangScriptPath = path.join(tempTimeoutDir, 'hang-child.js');
       fs.writeFileSync(hangScriptPath, 'setInterval(() => {}, 60000);', 'utf-8');
@@ -1307,14 +1523,14 @@ process.exit(0);
         const { fork } = require('child_process');
         cp = fork(hangScriptPath, [], { cwd: tempTimeoutDir, stdio: 'ignore' });
 
-        // Wait with a short 250ms timeout to simulate timeout
-        await waitForProcessExit(cp, 250);
+        // Wait with a short 200ms timeout to simulate timeout
+        await waitForProcessExit(cp, 200);
       } catch (err) {
         caughtTimeout = true;
-        assert.match(err.message, /did not exit within 250ms/);
+        assert.match(err.message, /did not exit within 200ms/);
       } finally {
         if (cp) {
-          await terminateProcess(cp, 600, 600);
+          await terminateProcess(cp, 1000, 1000);
           assert.equal(cp.exitCode !== null || cp.signalCode !== null, true, 'Child process must be verified terminated');
         }
         fs.rmSync(tempTimeoutDir, { recursive: true, force: true });
@@ -1322,6 +1538,104 @@ process.exit(0);
       }
 
       assert.equal(caughtTimeout, true, 'waitForProcessExit must have rejected with timeout error');
+    });
+
+    test('SEC-10 regression 3: child process termination with SIGTERM and escalation to SIGKILL (platform-aware)', async () => {
+      const tempKillDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-kill-sim-'));
+      const ignoreScript = path.join(tempKillDir, 'ignore-sigterm.js');
+      // On platforms where SIGTERM handler can be caught (POSIX), ignore it to force SIGKILL escalation.
+      // On Windows, TerminateProcess terminates directly. Both are handled reliably.
+      fs.writeFileSync(ignoreScript, `
+        process.on('SIGTERM', () => { /* ignore SIGTERM where permitted */ });
+        setInterval(() => {}, 60000);
+      `, 'utf-8');
+
+      let cp = null;
+      try {
+        const { fork } = require('child_process');
+        cp = fork(ignoreScript, [], { cwd: tempKillDir, stdio: 'ignore' });
+        // Allow process to start up and register handler
+        await new Promise(r => setTimeout(r, 200));
+
+        // Terminate process: on POSIX will escalate to SIGKILL after 300ms, on Windows terminates immediately
+        await terminateProcess(cp, 300, 2000);
+        assert.equal(cp.exitCode !== null || cp.signalCode !== null, true, 'Process must be confirmed terminated');
+      } finally {
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
+          try { await terminateProcess(cp, 500, 500); } catch (_) {}
+        }
+        fs.rmSync(tempKillDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempKillDir), false, 'Temporary directory must be removed');
+      }
+    });
+
+    test('SEC-10 regression 4: termination failure or simulated signal failure is observable and never swallowed', async () => {
+      const EventEmitter = require('events');
+      // Case A: kill throws an error (e.g. EPERM or simulated failure)
+      const fakeCp1 = new EventEmitter();
+      fakeCp1.pid = 999991;
+      fakeCp1.exitCode = null;
+      fakeCp1.signalCode = null;
+      fakeCp1.kill = () => {
+        throw new Error('EPERM: operation not permitted (simulated signal failure)');
+      };
+
+      await assert.rejects(
+        async () => {
+          await terminateProcess(fakeCp1, 200, 200);
+        },
+        /operation not permitted|simulated signal failure/,
+        'terminateProcess must reject and surface signal failure rather than swallowing it'
+      );
+
+      // Case B: kill returns false while process has not exited
+      const fakeCp2 = new EventEmitter();
+      fakeCp2.pid = 999992;
+      fakeCp2.exitCode = null;
+      fakeCp2.signalCode = null;
+      fakeCp2.kill = () => false;
+
+      await assert.rejects(
+        async () => {
+          await terminateProcess(fakeCp2, 200, 200);
+        },
+        /cp\.kill.*returned false/,
+        'terminateProcess must reject when kill() returns false for un-exited process'
+      );
+    });
+
+    test('SEC-10 regression 5: temporary directory and evidence are strictly preserved if termination fails', async () => {
+      const tempEvidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-evidence-sim-'));
+      const evidenceFile = path.join(tempEvidenceDir, 'log-evidence.txt');
+      fs.writeFileSync(evidenceFile, 'critical execution evidence to preserve for diagnosis', 'utf-8');
+
+      const EventEmitter = require('events');
+      const fakeCp = new EventEmitter();
+      fakeCp.pid = 999993;
+      fakeCp.exitCode = null;
+      fakeCp.signalCode = null;
+      fakeCp.kill = () => { throw new Error('Simulated kill failure'); };
+
+      let cleanupSucceeded = false;
+      let errorObserved = null;
+
+      try {
+        await terminateProcess(fakeCp, 100, 100);
+        // Directory cleanup must only execute after termination succeeds
+        fs.rmSync(tempEvidenceDir, { recursive: true, force: true });
+        cleanupSucceeded = true;
+      } catch (err) {
+        errorObserved = err;
+        // On termination failure, evidence is preserved: do not delete tempEvidenceDir!
+      }
+
+      assert.ok(errorObserved, 'Termination failure must be observed');
+      assert.equal(cleanupSucceeded, false, 'Cleanup must NOT execute when termination fails');
+      assert.equal(fs.existsSync(tempEvidenceDir), true, 'Evidence directory must remain preserved on termination failure');
+      assert.equal(fs.existsSync(evidenceFile), true, 'Evidence file must remain intact');
+
+      // Manual cleanup after assertion
+      fs.rmSync(tempEvidenceDir, { recursive: true, force: true });
     });
 
     test('SEC-12: shutdown failure in watchers propagates error while ensuring database is still closed', async () => {

@@ -81,7 +81,7 @@ describe('Server V2 API Integration Tests', () => {
       });
     } catch (err) {
       if (serverProcess) {
-        await terminateProcess(serverProcess).catch(() => {});
+        await terminateProcess(serverProcess);
         serverProcess = null;
       }
       if (tempDir && fs.existsSync(tempDir)) {
@@ -91,6 +91,27 @@ describe('Server V2 API Integration Tests', () => {
     }
   });
 
+  function sendSignal(cp, signal) {
+    if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+      return true;
+    }
+    try {
+      const ok = cp.kill(signal);
+      if (!ok) {
+        if (cp.exitCode !== null || cp.signalCode !== null) {
+          return true;
+        }
+        throw new Error(`cp.kill('${signal}') returned false for un-exited process PID ${cp.pid}`);
+      }
+      return true;
+    } catch (err) {
+      if (cp.exitCode !== null || cp.signalCode !== null || err.code === 'ESRCH') {
+        return true;
+      }
+      throw err;
+    }
+  }
+
   function waitForProcessExit(cp, timeoutMs = 7000) {
     if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
       return Promise.resolve();
@@ -98,17 +119,35 @@ describe('Server V2 API Integration Tests', () => {
     return new Promise((resolve, reject) => {
       let timer = null;
       let exited = false;
+
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        cp.removeListener('exit', onExit);
+        cp.removeListener('close', onExit);
+        cp.removeListener('error', onError);
+      };
+
       const onExit = () => {
         if (exited) return;
         exited = true;
-        if (timer) clearTimeout(timer);
+        cleanup();
         resolve();
       };
+
+      const onError = (err) => {
+        if (exited) return;
+        exited = true;
+        cleanup();
+        reject(err);
+      };
+
       cp.once('exit', onExit);
       cp.once('close', onExit);
+      cp.once('error', onError);
 
       timer = setTimeout(() => {
         if (!exited && cp.exitCode === null && cp.signalCode === null) {
+          cleanup();
           reject(new Error(`Child process (PID ${cp.pid}) did not exit within ${timeoutMs}ms`));
         }
       }, timeoutMs);
@@ -129,6 +168,7 @@ describe('Server V2 API Integration Tests', () => {
         if (failTimer) clearTimeout(failTimer);
         cp.removeListener('exit', onExit);
         cp.removeListener('close', onExit);
+        cp.removeListener('error', onError);
       };
 
       const onExit = () => {
@@ -138,49 +178,73 @@ describe('Server V2 API Integration Tests', () => {
         resolve();
       };
 
-      // 1. Pasang listener exit dan close sebelum mengirim sinyal
-      cp.once('exit', onExit);
-      cp.once('close', onExit);
-
-      // 2. Kirim SIGTERM
-      try {
-        cp.kill('SIGTERM');
-      } catch (e) {
+      const onError = (err) => {
+        if (exited) return;
         if (cp.exitCode !== null || cp.signalCode !== null) {
           onExit();
           return;
         }
+        exited = true;
+        cleanup();
+        reject(err);
+      };
+
+      // 1. Pasang listener exit, close, dan error sebelum mengirim sinyal
+      cp.once('exit', onExit);
+      cp.once('close', onExit);
+      cp.once('error', onError);
+
+      // 2. Kirim SIGTERM
+      try {
+        sendSignal(cp, 'SIGTERM');
+      } catch (err) {
+        cleanup();
+        return reject(new Error(`Failed to send SIGTERM to process PID ${cp.pid}: ${err.message}`));
       }
 
-      // 3. Jika SIGTERM timeout tercapai, kirim SIGKILL dan tetap tunggu konfirmasi exit/close
-      killTimer = setTimeout(() => {
-        if (!exited && cp.exitCode === null && cp.signalCode === null) {
-          try {
-            cp.kill('SIGKILL');
-          } catch (e) {}
+      if (cp.exitCode !== null || cp.signalCode !== null) {
+        onExit();
+        return;
+      }
 
-          // 4. Jika setelah SIGKILL tetap tidak keluar, gagalkan tes dengan error jelas
-          failTimer = setTimeout(() => {
-            if (!exited && cp.exitCode === null && cp.signalCode === null) {
-              cleanup();
-              reject(new Error(`Failed to terminate process (PID: ${cp.pid}) within ${termTimeoutMs + killTimeoutMs}ms after SIGTERM and SIGKILL`));
-            }
-          }, killTimeoutMs);
+      // 3. Jika SIGTERM timeout tercapai, kirim SIGKILL dan tunggu konfirmasi exit/close
+      killTimer = setTimeout(() => {
+        if (exited || cp.exitCode !== null || cp.signalCode !== null) {
+          onExit();
+          return;
         }
+
+        try {
+          sendSignal(cp, 'SIGKILL');
+        } catch (err) {
+          cleanup();
+          return reject(new Error(`Failed to send SIGKILL to process PID ${cp.pid}: ${err.message}`));
+        }
+
+        if (cp.exitCode !== null || cp.signalCode !== null) {
+          onExit();
+          return;
+        }
+
+        // 4. Jika setelah SIGKILL tetap tidak keluar, gagalkan dengan error jelas
+        failTimer = setTimeout(() => {
+          if (!exited && cp.exitCode === null && cp.signalCode === null) {
+            cleanup();
+            reject(new Error(`Failed to terminate process (PID: ${cp.pid}) within ${termTimeoutMs + killTimeoutMs}ms after SIGTERM and SIGKILL`));
+          }
+        }, killTimeoutMs);
       }, termTimeoutMs);
     });
   }
 
   after(async () => {
-    try {
-      if (serverProcess) {
-        await terminateProcess(serverProcess);
-      }
-    } finally {
-      if (tempDir && fs.existsSync(tempDir)) {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
-      }
+    if (serverProcess) {
+      await terminateProcess(serverProcess);
+      serverProcess = null;
+    }
+    if (tempDir && fs.existsSync(tempDir)) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
     }
   });
 
