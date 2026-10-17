@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WeKeepIt v1.2 - Desktop Card Notepad & Document Vault</title>
+  <title>WeKeepIt v2.0 - Personal Work Board & Document Search</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📌</text></svg>">
 </head>
@@ -15,19 +15,24 @@
         <div class="logo-group">
           <span class="logo-icon">📌</span>
           <h1 class="logo-text">WeKeepIt</h1>
-          <span class="version-tag">v1.2</span>
+          <span class="version-tag">v2.0</span>
         </div>
       </div>
 
       <div class="header-center">
-        <!-- Clean Search Bar -->
+        <!-- Clean Search Bar with Scope Selector -->
         <div class="search-box-wrapper">
           <span class="search-icon">🔍</span>
+          <select id="searchScopeSelect" class="search-scope-select" title="Lingkup Pencarian">
+            <option value="all">🌐 Semua</option>
+            <option value="board">📋 Board</option>
+            <option value="documents">📁 Dokumen</option>
+          </select>
           <input 
             type="text" 
             id="searchInput" 
             class="search-input" 
-            placeholder="Cari teks, filter tag, atau cari isi dokumen (PDF/Word/Excel)..." 
+            placeholder="Cari kartu catatan atau cari isi dokumen (.md, .pdf, .docx, .xlsx)..." 
             autocomplete="off"
             spellcheck="false"
           >
@@ -54,22 +59,32 @@
       </div>
     </header>
 
-    <!-- Clean Quick Tag Bar (Auto-hides if no tags) -->
-    <section class="tag-bar-section" id="tagBarSection" style="display: none;">
-      <div class="tag-chips-container" id="tagChipsContainer"></div>
-    </section>
-
-    <!-- Navigation Tabs -->
+    <!-- Main Navigation Bar -->
     <nav class="nav-tabs">
-      <div class="tab-buttons">
+      <div class="main-domain-tabs">
+        <button class="domain-tab active" id="tabDomainBoard" data-domain="board">
+          📋 Work Board
+        </button>
+        <button class="domain-tab" id="tabDomainDocs" data-domain="documents">
+          📁 Dokumen Lokal
+        </button>
+        <button class="domain-tab" id="tabDomainSearch" data-domain="search">
+          🔍 Hasil Pencarian <span class="tab-count" id="countSearchResults" style="display: none;">0</span>
+        </button>
+      </div>
+
+      <div class="nav-spacer"></div>
+
+      <!-- Work Board Filter Pills (Visible when on Board tab) -->
+      <div class="tab-buttons" id="boardFilterTabs">
         <button class="nav-tab active" data-tab="all">
           Semua <span class="tab-count" id="countAll">0</span>
         </button>
         <button class="nav-tab" data-tab="pinned">
-          📌 Disematkan <span class="tab-count" id="countPinned">0</span>
+          📌 Pinned <span class="tab-count" id="countPinned">0</span>
         </button>
         <button class="nav-tab" data-tab="documents">
-          📁 Dokumen <span class="tab-count" id="countDocuments">0</span>
+          📎 Lampiran <span class="tab-count" id="countDocuments">0</span>
         </button>
         <button class="nav-tab" data-tab="reminders">
           ⏰ Reminder <span class="tab-count" id="countReminders">0</span>
@@ -79,47 +94,181 @@
         </button>
       </div>
 
-      <div class="nav-spacer"></div>
-
-      <div class="view-density-toggle">
+      <div class="view-density-toggle" id="viewDensityToggle">
         <button class="density-btn active" data-density="normal">Grid</button>
         <button class="density-btn" data-density="compact">Kompak</button>
       </div>
     </nav>
 
+    <!-- Clean Quick Tag Bar (Auto-hides if no tags) -->
+    <section class="tag-bar-section" id="tagBarSection" style="display: none;">
+      <div class="tag-chips-container" id="tagChipsContainer"></div>
+    </section>
+
     <!-- Main Content Area -->
     <main class="main-content">
-      <!-- Active Query Notice -->
-      <div id="filterNotice" class="filter-notice" style="display: none;">
-        <span>Filter aktif: <strong id="filterQueryDisplay"></strong></span>
-        <button id="resetFilterBtn" class="reset-filter-btn">Hapus Filter</button>
+      
+      <!-- ================= VIEW 1: WORK BOARD (V1) ================= -->
+      <div id="boardView" class="view-panel active">
+        <!-- Active Query Notice -->
+        <div id="filterNotice" class="filter-notice" style="display: none;">
+          <span>Filter aktif: <strong id="filterQueryDisplay"></strong></span>
+          <button id="resetFilterBtn" class="reset-filter-btn">Hapus Filter</button>
+        </div>
+
+        <!-- Pinned Cards Section -->
+        <section class="board-section" id="pinnedSection" style="display: none;">
+          <div class="section-header">
+            <h2 class="section-title">📌 Disematkan</h2>
+            <span class="section-badge" id="pinnedBadge">0</span>
+          </div>
+          <div class="card-grid" id="pinnedGrid"></div>
+        </section>
+
+        <!-- All Cards Section -->
+        <section class="board-section" id="cardsSection">
+          <div class="section-header" id="cardsSectionHeader" style="display: none;">
+            <h2 class="section-title" id="cardsSectionTitle">📋 Catatan</h2>
+            <span class="section-badge" id="cardsBadge">0</span>
+          </div>
+          <div class="card-grid" id="cardsGrid"></div>
+        </section>
+
+        <!-- Clean Notepad Empty State -->
+        <div id="emptyState" class="empty-state">
+          <div class="empty-icon">📝</div>
+          <h3 class="empty-title">Belum ada catatan</h3>
+          <p class="empty-desc" id="emptyDesc">Mulai buat kartu catatan, simpan tautan & role akses, atau atur aktivitas harian.</p>
+          <button id="emptyActionBtn" class="btn btn-primary">➕ Buat Catatan Pertama</button>
+        </div>
       </div>
 
-      <!-- Pinned Cards Section -->
-      <section class="board-section" id="pinnedSection" style="display: none;">
-        <div class="section-header">
-          <h2 class="section-title">📌 Disematkan</h2>
-          <span class="section-badge" id="pinnedBadge">0</span>
+      <!-- ================= VIEW 2: DOCUMENT LIBRARY & FOLDERS (V2) ================= -->
+      <div id="documentsView" class="view-panel" style="display: none;">
+        <div class="docs-library-header">
+          <div class="library-title-group">
+            <h2 class="library-title">📁 Manajemen Folder Dokumen</h2>
+            <p class="library-subtitle">Pilih folder lokal yang berisi berkas <strong>.md, .pdf, .docx, .xlsx</strong> untuk diindeks secara otomatis.</p>
+          </div>
+          <div class="library-header-actions">
+            <button id="addFolderBtn" class="btn btn-primary">
+              <span>➕</span> Tambah Folder
+            </button>
+            <button id="reindexAllBtn" class="btn btn-secondary">
+              <span>🔄</span> Pindai Ulang Semua
+            </button>
+          </div>
         </div>
-        <div class="card-grid" id="pinnedGrid"></div>
-      </section>
 
-      <!-- All Cards Section -->
-      <section class="board-section" id="cardsSection">
-        <div class="section-header" id="cardsSectionHeader" style="display: none;">
-          <h2 class="section-title" id="cardsSectionTitle">📋 Catatan</h2>
-          <span class="section-badge" id="cardsBadge">0</span>
+        <!-- Library Statistics Summary -->
+        <div class="indexer-stats-strip" id="indexerStatsStrip">
+          <div class="stat-card">
+            <span class="stat-num" id="statFoldersCount">0</span>
+            <span class="stat-label">Folder Terindeks</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num" id="statDocsCount">0</span>
+            <span class="stat-label">Dokumen Siap</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-num" id="statChunksCount">0</span>
+            <span class="stat-label">Unit Teks Terindeks</span>
+          </div>
+          <div class="stat-card stat-status">
+            <div class="stat-status-badge" id="statIndexerBadge">
+              <span class="status-dot online"></span>
+              <span id="statIndexerStatusText">Siap (Idle)</span>
+            </div>
+            <span class="stat-label">Status Mesin Pencari</span>
+          </div>
         </div>
-        <div class="card-grid" id="cardsGrid"></div>
-      </section>
 
-      <!-- Clean Notepad Empty State -->
-      <div id="emptyState" class="empty-state">
-        <div class="empty-icon">📝</div>
-        <h3 class="empty-title">Belum ada catatan</h3>
-        <p class="empty-desc" id="emptyDesc">Mulai buat kartu catatan, simpan tautan & role akses, atau atur aktivitas harian.</p>
-        <button id="emptyActionBtn" class="btn btn-primary">➕ Buat Catatan Pertama</button>
+        <!-- Indexing Progress Banner (Shows during scan/index) -->
+        <div id="indexingProgressBanner" class="indexing-progress-banner" style="display: none;">
+          <div class="progress-info-row">
+            <span class="progress-title">⏳ Sedang Mengindeks Berkas...</span>
+            <span class="progress-counter" id="progressCounterText">0/0</span>
+          </div>
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+          </div>
+          <div class="progress-filename" id="progressFilenameText">Memindai folder...</div>
+        </div>
+
+        <!-- Indexed Folders List -->
+        <div class="folders-section-title">
+          <h3>📂 Folder Terdaftar</h3>
+        </div>
+        <div class="folders-grid" id="foldersGrid">
+          <div class="folders-empty-notice" id="foldersEmptyNotice">
+            <p>Belum ada folder yang ditambahkan untuk diindeks. Klik tombol <strong>Tambah Folder</strong> di atas untuk memulai.</p>
+          </div>
+        </div>
+
+        <!-- Indexed Documents Table -->
+        <div class="indexed-files-section">
+          <div class="section-header-compact">
+            <h3>📑 Berkas yang Telah Terindeks</h3>
+            <span class="badge-tag" id="indexedFilesBadge">0 berkas</span>
+          </div>
+          <div class="table-container">
+            <table class="indexed-files-table">
+              <thead>
+                <tr>
+                  <th>Nama Berkas</th>
+                  <th>Tipe</th>
+                  <th>Ukuran</th>
+                  <th>Unit Teks</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="indexedFilesTableBody">
+                <tr>
+                  <td colspan="6" class="table-empty-cell">Belum ada dokumen yang selesai diindeks.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
+
+      <!-- ================= VIEW 3: DOCUMENT SEARCH RESULTS (V2) ================= -->
+      <div id="searchResultsView" class="view-panel" style="display: none;">
+        <div class="search-view-header">
+          <div class="search-meta-group">
+            <h2 class="search-title">🔍 Hasil Pencarian Dokumen</h2>
+            <span class="search-summary-text" id="searchSummaryText">Menampilkan hasil untuk: <strong>""</strong></span>
+          </div>
+
+          <!-- Search Mode Selector (Mode A vs Mode B) -->
+          <div class="search-mode-controls">
+            <label class="search-mode-label" for="searchModeSelect">Mode Pencarian:</label>
+            <select id="searchModeSelect" class="form-select form-select-sm">
+              <option value="all_terms">Mode B — Semua Kata (Unordered dalam 1 Kalimat)</option>
+              <option value="exact">Mode A — Frasa Tepat (Exact Verbatim Phrase)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Document Search Results List -->
+        <div class="search-results-list" id="searchResultsList"></div>
+
+        <!-- Search Results Pagination -->
+        <div class="search-pagination-bar" id="searchPaginationBar" style="display: none;">
+          <button id="prevPageBtn" class="btn btn-secondary btn-sm" disabled>‹ Sebelumnya</button>
+          <span class="pagination-info" id="paginationInfo">Halaman 1 dari 1</span>
+          <button id="nextPageBtn" class="btn btn-secondary btn-sm" disabled>Berikutnya ›</button>
+        </div>
+
+        <!-- Search Empty State -->
+        <div id="searchEmptyState" class="empty-state" style="display: none;">
+          <div class="empty-icon">🔎</div>
+          <h3 class="empty-title">Tidak ada kecocokan</h3>
+          <p class="empty-desc" id="searchEmptyDesc">Tidak ditemukan dokumen lokal yang memuat kata kunci pencarian.</p>
+        </div>
+      </div>
+
     </main>
   </div>
 
@@ -227,14 +376,14 @@
             </div>
           </div>
 
-          <!-- Section: Document Attachments -->
+          <!-- Section: Document Attachments (V1.2 Card Attachments) -->
           <div class="form-group-collapsible" id="attachmentsCollapsible">
             <div class="collapsible-header" id="toggleAttachments">
               <span>📁 Lampiran Dokumen (<span id="attachmentsCountPreview">0</span>)</span>
               <span class="collapsible-toggle-icon">▼</span>
             </div>
             <div class="collapsible-body" id="attachmentsContainer">
-              <p class="attachments-help-text">Simpan berkas <strong>PDF, DOCX (Word), XLSX (Excel), atau Teks</strong>. Isi dokumen otomatis terindeks untuk pencarian teks penuh.</p>
+              <p class="attachments-help-text">Simpan berkas <strong>PDF, DOCX (Word), XLSX (Excel), atau Teks</strong> langsung di kartu.</p>
               <div class="attachment-upload-zone" id="attachmentDropZone">
                 <span class="upload-icon">📂</span>
                 <span class="upload-label">Klik atau seret berkas ke sini (.pdf, .docx, .xlsx, .txt)</span>
@@ -281,6 +430,40 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" id="cancelCardModal">Batal</button>
           <button type="submit" class="btn btn-primary" id="saveCardBtn">Simpan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Add Indexed Folder (V2) -->
+  <div id="folderModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog">
+      <form id="addFolderForm">
+        <div class="modal-header">
+          <h3 class="modal-title">📂 Tambah Folder Dokumen</h3>
+          <button type="button" class="modal-close" id="closeFolderModal">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-subtitle">Masukkan path direktori lokal tempat dokumen Anda tersimpan.</p>
+          <div class="form-group">
+            <label for="folderPathInput" class="form-label">Path Folder Lengkap *</label>
+            <input type="text" id="folderPathInput" class="form-input" placeholder="contoh: C:\Users\Username\Documents\Proyek" required>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="folderRecursiveCheck" checked>
+              <span>Pindai subfolder secara rekursif</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label for="folderExclusionsInput" class="form-label">Pengecualian (pisahkan dengan koma)</label>
+            <input type="text" id="folderExclusionsInput" class="form-input" value=".git, node_modules, bin, obj, temp">
+            <small class="form-help-text">Folder atau pola berkas yang tidak akan diindeks.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="cancelFolderModal">Batal</button>
+          <button type="submit" class="btn btn-primary">Simpan & Mulai Indeks</button>
         </div>
       </form>
     </div>
@@ -348,7 +531,7 @@
           <span id="docViewerIcon" class="doc-viewer-icon">📄</span>
           <div>
             <h3 class="modal-title" id="docViewerTitle">Nama Dokumen</h3>
-            <span class="doc-viewer-meta" id="docViewerMeta">PDF • 140 KB • 1,200 Kata</span>
+            <span class="doc-viewer-meta" id="docViewerMeta">PDF • 140 KB</span>
           </div>
         </div>
         <button class="modal-close" id="closeDocViewerModal">✕</button>
@@ -374,7 +557,7 @@
         <button class="modal-close" id="closeDataModal">✕</button>
       </div>
       <div class="modal-body">
-        <p class="modal-subtitle">Data otomatis tersimpan ke <code>wekeepit-data.json</code>.</p>
+        <p class="modal-subtitle">Data kartu otomatis tersimpan ke <code>wekeepit-data.json</code>.</p>
         <div class="data-actions-grid">
           <div class="data-action-card">
             <h4>📥 Unduh Backup</h4>

@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test test/**/*.test.js",
     "desktop": "launch-desktop.bat"
   },
   "keywords": [
@@ -18,5 +19,8 @@
     "reminder"
   ],
   "author": "Antigravity",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3"
+  }
 }
