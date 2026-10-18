@@ -19,6 +19,10 @@ if %errorlevel% neq 0 goto WaitForServer
 
 :OpenApp
 echo [WeKeepIt] Membuka jendela desktop board...
+if exist "WeKeepIt.exe" (
+    start "" "WeKeepIt.exe"
+    exit
+)
 start "" msedge.exe --app=http://127.0.0.1:4321 --window-size=1200,820
 if %errorlevel% neq 0 (
     start "" chrome.exe --app=http://127.0.0.1:4321 --window-size=1200,820

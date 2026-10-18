@@ -304,9 +304,25 @@ function createServerApp(options = {}) {
           return;
         }
         if (process.platform === 'win32') {
-          const { exec } = require('child_process');
-          const psCmd = 'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = \'Pilih Folder Dokumen\'; $d.ShowNewFolderButton = $true; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }"';
-          exec(psCmd, (err, stdout) => {
+          const { execFile } = require('child_process');
+          const psScript = `
+$ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Windows.Forms
+$form = New-Object System.Windows.Forms.Form
+$form.TopMost = $true
+$form.StartPosition = 'CenterScreen'
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = 'Pilih Folder Dokumen untuk Diindeks'
+$dialog.UseDescriptionForTitle = $true
+$dialog.ShowNewFolderButton = $true
+$res = $dialog.ShowDialog($form)
+if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
+  Write-Output $dialog.SelectedPath
+}
+`;
+          const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
+          execFile('powershell', ['-NoProfile', '-STA', '-EncodedCommand', b64], (err, stdout) => {
             const selected = (stdout || '').trim();
             sendJson(res, 200, { path: selected || null });
           });

@@ -725,6 +725,7 @@
           console.warn('API folder picker error:', err);
         } finally {
           browseFolderBtn.disabled = false;
+          browseFolderBtn.textContent = '📂 Telusuri...';
         }
       });
     }
