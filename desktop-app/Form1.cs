@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -26,6 +28,9 @@ public partial class Form1 : Form
     private bool reallyExit = false;
     private readonly string htmlPath;
     private readonly string exeDir;
+    private readonly string dataDir;
+    private readonly bool isPortable;
+    private Process? serverProcess = null;
 
     public Form1()
     {
@@ -55,6 +60,36 @@ public partial class Form1 : Form
             }
         }
 
+        // Detect portable mode vs installed mode
+        bool hasPortableMarker = File.Exists(Path.Combine(exeDir, "portable.dat")) ||
+                                 File.Exists(Path.Combine(exeDir, "WeKeepIt-Portable.bat"));
+        bool isDevWorkspace = File.Exists(Path.Combine(exeDir, "..", "..", "..", "..", "package.json"));
+
+        if (hasPortableMarker || isDevWorkspace)
+        {
+            isPortable = true;
+            dataDir = exeDir;
+        }
+        else
+        {
+            isPortable = false;
+            dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WeKeepIt");
+            Directory.CreateDirectory(dataDir);
+
+            // Populate sample data in %APPDATA%\WeKeepIt if not yet present
+            var targetData = Path.Combine(dataDir, "wekeepit-data.json");
+            if (!File.Exists(targetData))
+            {
+                var sampleData = Path.Combine(exeDir, "wekeepit-data.sample.json");
+                if (!File.Exists(sampleData)) sampleData = Path.Combine(htmlPath, "wekeepit-data.sample.json");
+                if (File.Exists(sampleData))
+                {
+                    try { File.Copy(sampleData, targetData, false); } catch { }
+                }
+            }
+        }
+
+        StartBackgroundServerIfAvailable();
         SetupWindow();
         SetupSystemTray();
     }
@@ -66,21 +101,32 @@ public partial class Form1 : Form
         await InitializeWebViewAsync();
     }
 
-    public void ApplyDarkTranslucentTheme(bool acrylic = true)
+    public void ApplyDarkTranslucentTheme(bool acrylic = true, string? headerHex = null, bool isLight = false)
     {
         try
         {
-            // 1. Force native Windows Dark Mode on Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE)
-            int darkMode = 1;
+            // 1. Force native Windows Dark Mode or Light Mode on Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE)
+            int darkMode = isLight ? 0 : 1;
             DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
 
-            // 2. Set Title Bar background color to seamlessly match header (#161b22)
-            // COLORREF format is 0x00BBGGRR: #161b22 -> R=0x16, G=0x1B, B=0x22 -> 0x00221B16
-            int captionColor = 0x00221B16;
+            // 2. Set Title Bar background color to seamlessly match header
+            // COLORREF format is 0x00BBGGRR: default #161b22 (0x00221B16) or #f6f8fa for light (0x00FAF8F6)
+            int captionColor = isLight ? 0x00FAF8F6 : 0x00221B16;
+            if (!string.IsNullOrEmpty(headerHex) && headerHex.StartsWith("#") && headerHex.Length == 7)
+            {
+                try
+                {
+                    int r = Convert.ToInt32(headerHex.Substring(1, 2), 16);
+                    int g = Convert.ToInt32(headerHex.Substring(3, 2), 16);
+                    int b = Convert.ToInt32(headerHex.Substring(5, 2), 16);
+                    captionColor = (b << 16) | (g << 8) | r;
+                }
+                catch { }
+            }
             DwmSetWindowAttribute(this.Handle, DWMWA_CAPTION_COLOR, ref captionColor, sizeof(int));
 
-            // 3. Set Title Bar text color (#f0f6fc)
-            int textColor = 0x00FCF6F0;
+            // 3. Set Title Bar text color (#0f172a for light, #f0f6fc for dark)
+            int textColor = isLight ? 0x002A170F : 0x00FCF6F0;
             DwmSetWindowAttribute(this.Handle, DWMWA_TEXT_COLOR, ref textColor, sizeof(int));
 
             // 4. In Windows 11 22H2/23H2/24H2: Enable Mica or Acrylic backdrop
@@ -104,9 +150,15 @@ public partial class Form1 : Form
 
     private void SetupWindow()
     {
-        this.Text = "WeKeepIt v1.1 - Desktop Card Notepad";
-        this.Size = new Size(1280, 840);
-        this.MinimumSize = new Size(540, 420);
+        this.Text = "WeKeepIt v2.0 - Desktop Card Notepad & Document Vault";
+
+        // Base resolution 1366x768, adapted dynamically to display working area
+        var workingArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1366, 768);
+        int targetWidth = Math.Min(1366, workingArea.Width);
+        int targetHeight = Math.Min(768, workingArea.Height);
+
+        this.Size = new Size(targetWidth, targetHeight);
+        this.MinimumSize = new Size(600, 420);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.BackColor = Color.FromArgb(14, 17, 23);
 
@@ -157,7 +209,7 @@ public partial class Form1 : Form
 
         notifyIcon = new NotifyIcon
         {
-            Text = "WeKeepIt v1.1 - Card Notepad",
+            Text = "WeKeepIt v2.0 - Card Notepad & Vault",
             Icon = this.Icon ?? SystemIcons.Application,
             ContextMenuStrip = trayMenu,
             Visible = true
@@ -203,7 +255,7 @@ public partial class Form1 : Form
             webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-            // Map local directory to virtual domain https://wekeepit.local/
+            // Map local directory to virtual domain wekeepit.local as offline fallback
             webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "wekeepit.local",
                 htmlPath,
@@ -212,7 +264,35 @@ public partial class Form1 : Form
 
             webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-            webView.CoreWebView2.Navigate("https://wekeepit.local/index.html");
+
+            // Check if backend server is available on port 4321
+            bool serverOnline = false;
+            for (int i = 0; i < 6; i++)
+            {
+                try
+                {
+                    using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+                    var res = await client.GetAsync("http://127.0.0.1:4321/api/ping");
+                    if (res.IsSuccessStatusCode)
+                    {
+                        serverOnline = true;
+                        break;
+                    }
+                }
+                catch
+                {
+                    await Task.Delay(250);
+                }
+            }
+
+            if (serverOnline)
+            {
+                webView.CoreWebView2.Navigate("http://127.0.0.1:4321/index.html");
+            }
+            else
+            {
+                webView.CoreWebView2.Navigate("http://wekeepit.local/index.html");
+            }
         }
         catch (Exception ex)
         {
@@ -236,7 +316,18 @@ public partial class Form1 : Form
 
     private string ReadBestDataFile(string filename)
     {
-        // 1. Check htmlPath (assets)
+        // 1. If installed mode, check dataDir (AppData\WeKeepIt)
+        if (!isPortable)
+        {
+            var pData = Path.Combine(dataDir, filename);
+            if (File.Exists(pData))
+            {
+                var text = File.ReadAllText(pData).Trim();
+                if (text.Length > 2 && text != "[]") return text;
+            }
+        }
+
+        // 2. Check htmlPath (assets)
         var p1 = Path.Combine(htmlPath, filename);
         if (File.Exists(p1))
         {
@@ -244,7 +335,7 @@ public partial class Form1 : Form
             if (text.Length > 2 && text != "[]") return text;
         }
 
-        // 2. Check exeDir
+        // 3. Check exeDir
         var p2 = Path.Combine(exeDir, filename);
         if (File.Exists(p2))
         {
@@ -252,7 +343,7 @@ public partial class Form1 : Form
             if (text.Length > 2 && text != "[]") return text;
         }
 
-        // 3. Check parent directory (root workspace)
+        // 4. Check parent directory (root workspace)
         var p3 = Path.GetFullPath(Path.Combine(exeDir, "..", filename));
         if (File.Exists(p3))
         {
@@ -260,6 +351,11 @@ public partial class Form1 : Form
             if (text.Length > 2 && text != "[]") return text;
         }
 
+        if (!isPortable)
+        {
+            var pData = Path.Combine(dataDir, filename);
+            if (File.Exists(pData)) return File.ReadAllText(pData);
+        }
         if (File.Exists(p1)) return File.ReadAllText(p1);
         if (File.Exists(p2)) return File.ReadAllText(p2);
         if (File.Exists(p3)) return File.ReadAllText(p3);
@@ -271,24 +367,32 @@ public partial class Form1 : Form
     {
         try
         {
-            // 1. htmlPath (assets)
-            var p1 = Path.Combine(htmlPath, filename);
-            File.WriteAllText(p1, content);
-
-            // 2. exeDir
-            var p2 = Path.Combine(exeDir, filename);
-            File.WriteAllText(p2, content);
-
-            // 3. parent directory (if workspace root)
-            var p3 = Path.GetFullPath(Path.Combine(exeDir, "..", filename));
-            if (File.Exists(p3) || Directory.Exists(Path.GetDirectoryName(p3)!))
+            if (!isPortable)
             {
-                File.WriteAllText(p3, content);
+                var pData = Path.Combine(dataDir, filename);
+                File.WriteAllText(pData, content);
+            }
+            else
+            {
+                // 1. htmlPath (assets)
+                var p1 = Path.Combine(htmlPath, filename);
+                try { File.WriteAllText(p1, content); } catch { }
+
+                // 2. exeDir
+                var p2 = Path.Combine(exeDir, filename);
+                try { File.WriteAllText(p2, content); } catch { }
+
+                // 3. parent directory (if workspace root)
+                var p3 = Path.GetFullPath(Path.Combine(exeDir, "..", filename));
+                if (File.Exists(p3) || Directory.Exists(Path.GetDirectoryName(p3)!))
+                {
+                    try { File.WriteAllText(p3, content); } catch { }
+                }
             }
         }
         catch (Exception ex)
         {
-            File.AppendAllText(Path.Combine(exeDir, "save_error.log"), $"[SaveError] {ex}\n\n");
+            try { File.AppendAllText(Path.Combine(dataDir, "save_error.log"), $"[SaveError] {ex}\n\n"); } catch { }
         }
     }
 
@@ -350,7 +454,9 @@ public partial class Form1 : Form
             else if (type == "SET_THEME")
             {
                 bool isTransparent = root.TryGetProperty("transparent", out var transProp) && transProp.GetBoolean();
-                ApplyDarkTranslucentTheme(isTransparent);
+                string? headerColor = root.TryGetProperty("headerColor", out var colProp) ? colProp.GetString() : null;
+                bool isLight = root.TryGetProperty("isLight", out var lightProp) && lightProp.GetBoolean();
+                ApplyDarkTranslucentTheme(isTransparent, headerColor, isLight);
             }
             else if (type == "NATIVE_NOTIFY")
             {
@@ -358,10 +464,112 @@ public partial class Form1 : Form
                 var body = root.TryGetProperty("body", out var b) ? (b.GetString() ?? "") : "";
                 notifyIcon.ShowBalloonTip(4000, title, body, ToolTipIcon.Info);
             }
+            else if (type == "PICK_FOLDER")
+            {
+                this.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        using var dialog = new FolderBrowserDialog
+                        {
+                            Description = "Pilih Folder Dokumen untuk Diindeks",
+                            UseDescriptionForTitle = true,
+                            ShowNewFolderButton = true
+                        };
+                        if (dialog.ShowDialog(this) == DialogResult.OK)
+                        {
+                            var payload = JsonSerializer.Serialize(new
+                            {
+                                type = "FOLDER_PICKED",
+                                path = dialog.SelectedPath
+                            });
+                            webView.CoreWebView2.PostWebMessageAsString(payload);
+                        }
+                    }
+                    catch (Exception fex)
+                    {
+                        Console.WriteLine($"Folder picker error: {fex.Message}");
+                    }
+                }));
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error handling web message: {ex.Message}");
+        }
+    }
+
+    private void StartBackgroundServerIfAvailable()
+    {
+        try
+        {
+            // Check if server is already running on port 4321
+            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
+            var response = client.GetAsync("http://127.0.0.1:4321/api/ping").GetAwaiter().GetResult();
+            if (response.IsSuccessStatusCode)
+            {
+                return; // Server is already running
+            }
+        }
+        catch { }
+
+        try
+        {
+            var serverJs = Path.Combine(exeDir, "server.js");
+            if (!File.Exists(serverJs))
+            {
+                var parentServerJs = Path.GetFullPath(Path.Combine(exeDir, "..", "server.js"));
+                if (File.Exists(parentServerJs)) serverJs = parentServerJs;
+            }
+
+            if (File.Exists(serverJs))
+            {
+                var nodeExe = Path.Combine(exeDir, "node.exe");
+                if (!File.Exists(nodeExe))
+                {
+                    var localNode = Path.Combine(exeDir, "node", "node.exe");
+                    if (File.Exists(localNode)) nodeExe = localNode;
+                    else nodeExe = "node";
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = nodeExe,
+                    Arguments = $"\"{serverJs}\"",
+                    WorkingDirectory = Path.GetDirectoryName(serverJs)!,
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+
+                if (!isPortable)
+                {
+                    psi.EnvironmentVariables["DATA_FILE_PATH"] = Path.Combine(dataDir, "wekeepit-data.json");
+                    psi.EnvironmentVariables["INDEX_DB_PATH"] = Path.Combine(dataDir, "wekeepit-index.db");
+                    psi.EnvironmentVariables["SCHEMA_FILE_PATH"] = Path.Combine(dataDir, "metadata-schema.json");
+                }
+
+                serverProcess = Process.Start(psi);
+                AppDomain.CurrentDomain.ProcessExit += (s, e) => StopBackgroundServer();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Background server start error: {ex.Message}");
+        }
+    }
+
+    private void StopBackgroundServer()
+    {
+        if (serverProcess != null && !serverProcess.HasExited)
+        {
+            try
+            {
+                serverProcess.Kill(true);
+                serverProcess.Dispose();
+                serverProcess = null;
+            }
+            catch { }
         }
     }
 
@@ -380,6 +588,7 @@ public partial class Form1 : Form
         }
         else
         {
+            StopBackgroundServer();
             notifyIcon.Visible = false;
             base.OnFormClosing(e);
         }

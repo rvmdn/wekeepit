@@ -8,9 +8,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationTitle>WeKeepIt</ApplicationTitle>
     <Product>WeKeepIt Desktop</Product>
-    <Version>1.1.0</Version>
+    <Version>2.0.0</Version>
     <Authors>Antigravity</Authors>
-    <Description>Portable Card Notepad &amp; Notice Board with Multi-Tag Filtering</Description>
+    <Description>Portable Card Notepad, Notice Board &amp; Document Vault with Full-Text Search</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,10 +21,12 @@
     <None Include="..\index.html" Link="assets\index.html" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\style.css" Link="assets\style.css" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\app.js" Link="assets\app.js" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\document-engine.js" Link="assets\document-engine.js" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\metadata-engine.js" Link="assets\metadata-engine.js" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\reminder-service.js" Link="assets\reminder-service.js" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\metadata-schema.json" Link="assets\metadata-schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\wekeepit-data.json" Link="assets\wekeepit-data.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\lib\**" Link="assets\lib\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-name: Build & Package WeKeepIt Portable Release
+name: Build & Package WeKeepIt Release (Installer & Portable)
 
 on:
   push:
@@ -13,13 +13,21 @@ permissions:
   contents: write
 
 jobs:
-  build-windows-portable:
-    name: Build WeKeepIt Portable (Windows x64)
+  build-windows:
+    name: Build WeKeepIt Packages (Windows x64)
     runs-on: windows-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install --omit=dev
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -29,46 +37,36 @@ jobs:
             9.0.x
             10.0.x
 
-      - name: Prepare Assets & Sample Data
+      - name: Setup Inno Setup Compiler
         shell: pwsh
         run: |
-          if (-not (Test-Path "wekeepit-data.json")) {
-            Copy-Item "wekeepit-data.sample.json" "wekeepit-data.json"
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            choco install innosetup --no-progress
+            echo "C:\Program Files (x86)\Inno Setup 6" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
 
       - name: Restore NuGet Packages
         run: dotnet restore desktop-app/WeKeepIt.csproj
 
-      - name: Publish Windows App
-        run: |
-          dotnet publish desktop-app/WeKeepIt.csproj -c Release -r win-x64 --self-contained false -o ./build-output
-
-      - name: Assemble Portable Package
+      - name: Build Installer and Portable Packages
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path ./package/WeKeepIt-v1.1-Portable -Force
-          Copy-Item -Path ./build-output/* -Destination ./package/WeKeepIt-v1.1-Portable -Recurse -Force
-          
-          # Include sample data if not generated
-          if (-not (Test-Path "./package/WeKeepIt-v1.1-Portable/wekeepit-data.json")) {
-            Copy-Item "wekeepit-data.sample.json" "./package/WeKeepIt-v1.1-Portable/wekeepit-data.json"
-          }
+          & ./installer/build-installer.ps1
 
-          # Compress to portable zip
-          Compress-Archive -Path ./package/WeKeepIt-v1.1-Portable -DestinationPath ./WeKeepIt-v1.1-Portable.zip -Force
-
-      - name: Upload Build Artifact
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: WeKeepIt-v1.1-Portable
-          path: WeKeepIt-v1.1-Portable.zip
+          name: WeKeepIt-Windows-Release
+          path: dist/*
           retention-days: 14
 
       - name: Create GitHub Release (On Tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: WeKeepIt-v1.1-Portable.zip
+          files: |
+            dist/*.zip
+            dist/*.exe
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false

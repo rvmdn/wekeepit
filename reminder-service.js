@@ -185,14 +185,14 @@ class ReminderService {
     if (isNaN(diff)) return '';
 
     if (diff < 0) {
-      const minsPast = Math.floor(Math.abs(diff) / 60000);
+      const minsPast = Math.round(Math.abs(diff) / 60000);
       if (minsPast < 60) return `Terlewat ${minsPast}m lalu`;
       const hoursPast = Math.floor(minsPast / 60);
       if (hoursPast < 24) return `Terlewat ${hoursPast}j lalu`;
       return 'Sudah lewat';
     }
 
-    const mins = Math.floor(diff / 60000);
+    const mins = Math.round(diff / 60000);
     if (mins < 60) return `Dalam ${mins}m`;
     const hours = Math.floor(mins / 60);
     if (hours < 24) return `Dalam ${hours}j ${mins % 60}m`;
