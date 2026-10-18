@@ -4,25 +4,25 @@
 **Auditor:** Senior QA Engineer, Application Security Engineer & Software Architect  
 **Audit Date:** 2026-10-18  
 **Repository:** `https://github.com/rvmdn/wekeepit`  
-**Test Suite Coverage:** 145 tests across 34 suites (100% passing)
+**Test Suite Coverage:** 159 tests across 34 suites (100% passing)
 
 ---
 
 ## 1. Executive Summary
 
-Audit menyeluruh Tahap 6 hingga Tahap 6.8 (Phase 6.8 — Close Remaining Audit Gaps: Fail-Closed Path Canonicalization, Filesystem-Aware Case Sensitivity, Observable Child Process Termination & Evidence Preservation, Zero Swallowed Teardown Errors, and Clean Verification) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0), tinggi (P1), dan menengah (P2)—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, hardening endpoint buka berkas, eliminasi swallowed errors pada terminasi child process, penegakan observable failure, verifikasi integritas root database pada suite teardown final, penolakan seluruh jalur resolusi pada database sandbox yang diaudit, fail-closed path canonicalization, serta case-sensitivity yang platform-aware—telah diselesaikan secara tuntas. Seluruh 145 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan database default repository root (`wekeepit-index.db`) serta data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan (zero-touch). Discrepancy historis antara 135 tests (Tahap 6.6) dan 140 tests (Tahap 6.7) kini telah ditutup secara konsisten pada Tahap 6.8 dengan penambahan 5 regresi penutup untuk SEC-09 fail-closed canonicalization, menghasilkan total definitif 145 tests.
+Audit menyeluruh Tahap 6 hingga Tahap 6.10 (Phase 6.10 — Intermediate Symlink Canonicalization Closure, Phase 6.9 — Fail-Closed Protected Target Canonicalization & Filesystem Case Probe, dan Phase 6.8 — Close Remaining Audit Gaps) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0), tinggi (P1), dan menengah (P2)—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, hardening endpoint buka berkas, eliminasi swallowed errors pada terminasi child process, penegakan observable failure, verifikasi integritas root database pada suite teardown final, penolakan seluruh jalur resolusi pada database sandbox yang diaudit, fail-closed path canonicalization (penghapusan total fallback leksikal unsafe), verifikasi audit setiap komponen path (intermediate dan leaf symlinks), serta case-sensitivity probe yang platform-aware—telah diselesaikan secara tuntas. Seluruh 159 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan database default repository root (`wekeepit-index.db`) serta data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan (zero-touch). Discrepancy historis telah ditutup secara konsisten hingga Tahap 6.10 dengan total definitif 159 tests (progresi: 135 $\rightarrow$ 140 $\rightarrow$ 145 $\rightarrow$ 153 $\rightarrow$ 159).
 
 ### Metrik Pengujian Otomatis
 
-| Parameter | Baseline | Pasca Tahap 6 | Pasca Tahap 6.1 | Pasca Tahap 6.2 | Pasca Tahap 6.5 | Pasca Tahap 6.6 | Pasca Tahap 6.7 | Pasca Tahap 6.8 (Current) | Status |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Total Test Suites** | 19 suites | 32 suites | 33 suites | 33 suites | 34 suites | 34 suites | 34 suites | **34 suites (8 test files)** | **+15 suites** |
-| **Total Tests** | 50 tests | 85 tests | 107 tests | 115 tests | 124 tests | 135 tests | 140 tests | **145 tests** | **+95 tests** |
-| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | 115 (100%) | 124 (100%) | 135 (100%) | 140 (100%) | **145 (100%)** | **PASS (100%)** |
-| **Failed Tests** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **0** | **0 Failures** |
-| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | 0.47 detik | 5.16 detik | 5.25 detik | 6.08 detik | **6.62 detik** | Cepat & Terisolasi Penuh |
-| **Integritas DB Root** | Tidak Terisolasi | Tidak Terisolasi | Tidak Terisolasi | Parsial | Zero-Touch | Zero-Touch Penuh | Zero-Touch Verified | **Zero-Touch Post-Suite Teardown (0 bytes touched, verified)** | **TERISOLASI MUTLAK** |
-| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | **Terverifikasi (0 bytes altered)** | **Terjaga** |
+| Parameter | Baseline | Pasca Tahap 6.6 | Pasca Tahap 6.7 | Pasca Tahap 6.8 | Pasca Tahap 6.9 | Pasca Tahap 6.10 (Final) | Status |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Total Test Suites** | 19 suites | 34 suites | 34 suites | 34 suites | 34 suites | **34 suites (8 test files)** | **+15 suites** |
+| **Total Tests** | 50 tests | 135 tests | 140 tests | 145 tests | 153 tests | **159 tests** | **+109 tests** |
+| **Passed Tests** | 50 (100%) | 135 (100%) | 140 (100%) | 145 (100%) | 153 (100%) | **159 (100%)** | **PASS (100%)** |
+| **Failed Tests** | 0 | 0 | 0 | 0 | 0 | **0** | **0 Failures** |
+| **Durasi Pengujian** | 1.71 detik | 5.25 detik | 6.08 detik | 6.62 detik | 7.23 detik | **7.94 detik** | Cepat & Terisolasi Penuh |
+| **Integritas DB Root** | Tidak Terisolasi | Zero-Touch Penuh | Zero-Touch Verified | Zero-Touch Teardown | Zero-Touch Fail-Closed | **Zero-Touch Post-Suite Teardown (0 bytes touched, verified)** | **TERISOLASI MUTLAK** |
+| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | **Terverifikasi (0 bytes altered)** | **Terjaga** |
 
 ---
 
@@ -332,7 +332,7 @@ $env:INDEX_DB_PATH = $null; npm test
   # cancelled 0
   # skipped 0
   # todo 0
-  # duration_ms 6792.2016
+  # duration_ms 7941.6314
   ```
 
 #### 2. Audit Keamanan & Isolasi Database (`test/audit-security-and-integrity.test.js`)
@@ -420,7 +420,11 @@ wekeepit-data.json    exists: true  size: 2868 bytes   sha256: fa47ffbf6da25849a
 - **Pull Request:** PR #1 — [https://github.com/rvmdn/wekeepit/pull/1](https://github.com/rvmdn/wekeepit/pull/1)
 - **Branch:** `audit/wekeepit-v2-security` (Base: `main`)
 - **Status PR:** **OPEN** (Unmerged, targeting `main`).
-- **Distribusi Verifikasi:** Hasil pengujian di atas dicatat dari eksekusi lokal pada sistem Windows pengembang. Pada GitHub Actions CI, workflow uji coba dijalankan secara terpisah pada lingkungan runner remote GitHub (Linux & Windows).
+- **Status GitHub Actions / CI:**
+  - **Kondisi Aktual:** Automated CI test workflow untuk menjalankan `npm test` **belum dikonfigurasi** pada repositori ini. Workflow yang tersedia saat ini pada `.github/workflows/build-release.yml` hanya bertugas melakukan build dan packaging aplikasi desktop .NET saat rilis tag (`v*`) atau push ke `main`/`master`.
+  - **Bukti GitHub Runs:** Eksekusi workflow GitHub yang tercatat (`gh run list`) hanya mencakup rilis historis v1.1.0 (`Build & Package WeKeepIt Portable Release`), tanpa ada workflow run untuk pengujian test suite PR #1.
+  - **Klaim Kelulusan:** Seluruh status **PASS (159/159)** didasarkan secara empiris pada eksekusi pengujian lokal di lingkungan Windows pengembang. **Tidak ada klaim bahwa CI GitHub Actions telah lulus**, karena runner CI untuk pengujian otomatis belum berjalan/dikonfigurasi.
+- **Rekomendasi Minimal CI (Scope Terpisah):** Diusulkan agar di masa mendatang (di luar scope PR #1 agar tidak memperluas batasan PR) ditambahkan workflow GitHub Actions minimal (`.github/workflows/test.yml`) yang menjalankan `npm test` pada runner `windows-latest` dan `ubuntu-latest`.
 - **Catatan Peninjauan Independen:** Perintah di atas disediakan agar dapat dijalankan ulang secara mandiri oleh peninjau (reviewer) atau auditor pihak ketiga di lingkungan bersih.
 
 > **Peringatan Kepatuhan:** PR #1 harus tetap berstatus **OPEN** dan tidak boleh di-merge langsung ke branch `main`.
