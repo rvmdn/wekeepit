@@ -4,25 +4,25 @@
 **Auditor:** Senior QA Engineer, Application Security Engineer & Software Architect  
 **Audit Date:** 2026-10-18  
 **Repository:** `https://github.com/rvmdn/wekeepit`  
-**Test Suite Coverage:** 135 tests across 34 suites (100% passing)
+**Test Suite Coverage:** 145 tests across 34 suites (100% passing)
 
 ---
 
 ## 1. Executive Summary
 
-Audit menyeluruh Tahap 6 hingga Tahap 6.7 (Final Audit Corrections: Observable Child Process Termination, Root Database Post-Suite Teardown Integrity, Guarded Sandbox Path Exercise, and Platform-Correct Canonicalization) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0), tinggi (P1), dan menengah (P2)—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, hardening endpoint buka berkas, eliminasi swallowed errors pada terminasi child process, penegakan observable failure, verifikasi integritas root database pada suite teardown final, penolakan seluruh jalur resolusi pada database sandbox yang diaudit, serta canonicalization yang platform-aware—telah diselesaikan secara tuntas. Seluruh 140 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan database default repository root (`wekeepit-index.db`) serta data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan (zero-touch).
+Audit menyeluruh Tahap 6 hingga Tahap 6.8 (Phase 6.8 — Close Remaining Audit Gaps: Fail-Closed Path Canonicalization, Filesystem-Aware Case Sensitivity, Observable Child Process Termination & Evidence Preservation, Zero Swallowed Teardown Errors, and Clean Verification) telah selesai dilaksanakan terhadap implementasi WeKeepIt V2. Seluruh temuan kritis (P0), tinggi (P1), dan menengah (P2)—termasuk penegakan loopback binding socket server aktual, penolakan Origin null, isolasi CORS desktop, hardening endpoint buka berkas, eliminasi swallowed errors pada terminasi child process, penegakan observable failure, verifikasi integritas root database pada suite teardown final, penolakan seluruh jalur resolusi pada database sandbox yang diaudit, fail-closed path canonicalization, serta case-sensitivity yang platform-aware—telah diselesaikan secara tuntas. Seluruh 145 automated regression tests lulus 100% tanpa ada tes yang di-skip atau dinonaktifkan, dan database default repository root (`wekeepit-index.db`) serta data pengguna (`wekeepit-data.json`) terverifikasi 100% utuh tanpa perubahan (zero-touch). Discrepancy historis antara 135 tests (Tahap 6.6) dan 140 tests (Tahap 6.7) kini telah ditutup secara konsisten pada Tahap 6.8 dengan penambahan 5 regresi penutup untuk SEC-09 fail-closed canonicalization, menghasilkan total definitif 145 tests.
 
 ### Metrik Pengujian Otomatis
 
-| Parameter | Baseline | Pasca Tahap 6 | Pasca Tahap 6.1 | Pasca Tahap 6.2 | Pasca Tahap 6.5 | Pasca Tahap 6.6 | Pasca Tahap 6.7 (Current) | Status |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Total Test Suites** | 19 suites | 32 suites | 33 suites | 33 suites | 34 suites | 34 suites | **34 suites (8 test files)** | **+15 suites** |
-| **Total Tests** | 50 tests | 85 tests | 107 tests | 115 tests | 124 tests | 135 tests | **140 tests** | **+90 tests** |
-| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | 115 (100%) | 124 (100%) | 135 (100%) | **140 (100%)** | **PASS (100%)** |
-| **Failed Tests** | 0 | 0 | 0 | 0 | 0 | 0 | **0** | **0 Failures** |
-| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | 0.47 detik | 5.16 detik | 5.25 detik | **6.08 detik** | Cepat & Terisolasi Penuh |
-| **Integritas DB Root** | Tidak Terisolasi | Tidak Terisolasi | Tidak Terisolasi | Parsial | Zero-Touch | Zero-Touch Penuh | **Zero-Touch Post-Suite Teardown (0 bytes touched, verified)** | **TERISOLASI MUTLAK** |
-| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | **Terverifikasi (0 bytes altered)** | **Terjaga** |
+| Parameter | Baseline | Pasca Tahap 6 | Pasca Tahap 6.1 | Pasca Tahap 6.2 | Pasca Tahap 6.5 | Pasca Tahap 6.6 | Pasca Tahap 6.7 | Pasca Tahap 6.8 (Current) | Status |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Total Test Suites** | 19 suites | 32 suites | 33 suites | 33 suites | 34 suites | 34 suites | 34 suites | **34 suites (8 test files)** | **+15 suites** |
+| **Total Tests** | 50 tests | 85 tests | 107 tests | 115 tests | 124 tests | 135 tests | 140 tests | **145 tests** | **+95 tests** |
+| **Passed Tests** | 50 (100%) | 85 (100%) | 107 (100%) | 115 (100%) | 124 (100%) | 135 (100%) | 140 (100%) | **145 (100%)** | **PASS (100%)** |
+| **Failed Tests** | 0 | 0 | 0 | 0 | 0 | 0 | 0 | **0** | **0 Failures** |
+| **Durasi Pengujian** | 1.71 detik | 2.59 detik | 2.65 detik | 0.47 detik | 5.16 detik | 5.25 detik | 6.08 detik | **6.62 detik** | Cepat & Terisolasi Penuh |
+| **Integritas DB Root** | Tidak Terisolasi | Tidak Terisolasi | Tidak Terisolasi | Parsial | Zero-Touch | Zero-Touch Penuh | Zero-Touch Verified | **Zero-Touch Post-Suite Teardown (0 bytes touched, verified)** | **TERISOLASI MUTLAK** |
+| **Integritas Data V1** | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | Terverifikasi | **Terverifikasi (0 bytes altered)** | **Terjaga** |
 
 ---
 
@@ -147,54 +147,37 @@ Audit menyeluruh Tahap 6 hingga Tahap 6.7 (Final Audit Corrections: Observable C
      - Penghapusan direktori temporary hanya dilakukan setelah child process dipastikan benar-benar berhenti, dan hasil penghapusan diverifikasi secara tegas (`assert.strictEqual(fs.existsSync(tempDir), false)`) tanpa menelan error cleanup.
 - **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan Wajib Phase 6.3 – 6.6: 19 tests passing) dan `test/server-api.test.js` (Subtest isolated child process: 1 test passing).
 
-### SEC-09 — Platform-Correct Path Canonicalization & Database Guard Injection (P1 / Temuan Phase 6.6 – 6.7)
-- **File & Baris:** `indexer/db.js:13-75, 490-505`, `test/audit-security-and-integrity.test.js:1390-1460`.
-- **Skenario Risiko:** Perlindungan database default sebelumnya hanya memeriksa argumen eksplisit di konstruktor. Jika `dbPath` `undefined` atau `null`, modul langsung mengonsumsi `process.env.INDEX_DB_PATH` tanpa validasi setara, sehingga variabel lingkungan yang mengarah ke database default dapat melewati guard. Selain itu, pengujian casing sebelumnya berasumsi semua OS case-insensitive, dan tidak memverifikasi segmen dot (`./`, `../`), target direktori nonexistent, atau alias symlink.
-- **Perbaikan:**
-  1. Menyelesaikan resolusi path efektif terlebih dahulu (urutan: constructor arg $\rightarrow$ `INDEX_DB_PATH` $\rightarrow$ fallback `:memory:` di test / `DEFAULT_DB_PATH` di prod).
-  2. Mengimplementasikan fungsi canonicalization `canonicalizeDbPath(p)` menggunakan `path.resolve`, `fs.realpathSync` (menangani symlink dan casing riil direktori induk jika berkas belum ada), `path.normalize`, dan case-folding lowercase di Windows.
-  3. Membandingkan path efektif terkanonisasi dengan `DEFAULT_DB_PATH` via `isDefaultDbPath(p)`.
-  4. Menyediakan arsitektur injeksi protected default path yang aman untuk test (`IndexDB.setProtectedDefaultDbPathForTest(p)` dan konstruktor `options.defaultDbPath`). Injeksi ini strictly dibatasi pada test environment dan **tidak dapat menonaktifkan** perlindungan terhadap canonical `DEFAULT_DB_PATH` produksi.
-  5. Pengujian canonicalization dan variasi path dibuat platform-aware: case-insensitive comparisons hanya diaplikasikan pada platform dengan filesystem semantics yang relevan (`process.platform === 'win32' || process.platform === 'darwin'`), bukan di Linux ext4.
-  6. Menambahkan pengujian dot segments (`./`, `../`), slash variants, symlink aliases, dan nonexistent target handling tanpa membuka atau membuat database root.
-- **Verifikasi Test:** 7 tes regresi spesifik SEC-09 lulus 100% (env var bypass, undefined/null, variasi separator/dot/casing, canonicalizeDbPath edge cases, valid temp DB, `:memory:`, dan fresh require module).
-
-### SEC-10 — Observable Child Process Termination Failures (P2 / Temuan Phase 6.6 – 6.7)
-- **File & Baris:** `test/audit-security-and-integrity.test.js:9-90, 1462-1560`, `test/server-api.test.js:80-180`.
-- **Skenario Risiko:** Terdapat error handler kosong / ditelan (`catch (e) {}` di sekitar `SIGKILL` dan `.catch(() => {})` pada cleanup). Sinyal penghentian dapat mengembalikan `false` atau melempar error tanpa disadari. Penghapusan direktori temporary yang dijalankan saat proses masih berjalan berisiko mengunci berkas di Windows atau menghapus bukti kegagalan sebelum diagnosis.
-- **Perbaikan:**
-  1. Menghilangkan seluruh empty/swallowed error handler pada jalur terminasi child process.
-  2. Mengimplementasikan helper `sendSignal(cp, signal)` yang memverifikasi nilai kembalian `cp.kill(signal)`: jika mengembalikan `false` atau melempar exception saat proses belum keluar, kegagalan dianggap sebagai error observabel eksplisit (dengan tetap memperhitungkan kemungkinan proses keluar secara concurrent seperti `ESRCH`).
-  3. Memasang listener `exit`, `close`, dan `error` secara ketat *sebelum* sinyal terminasi (`SIGTERM` / `SIGKILL`) dikirimkan.
-  4. Mengupayakan terminasi graceful dengan `SIGTERM`, lalu eskalasi ke `SIGKILL` setelah timeout terkonfigurasi.
-  5. Direktori temporary hanya dihapus setelah proses terbukti dan terverifikasi benar-benar berhenti.
-  6. Jika terminasi gagal, error dilaporkan secara transparan dan bukti eksekusi di direktori temporary tetap dipreservasi untuk audit/investigasi (tidak dihapus secara diam-diam).
-- **Regresi Test yang Ditambahkan (5 Skenario):**
-  1. *Child Normal Exit:* Proses yang keluar normal dengan exit code 0 diverifikasi dan diterminasi bersih.
-  2. *Timeout Escalation:* Proses yang melampaui timeout awal diterminasi dengan sinyal dan dipastikan keluar.
-  3. *SIGKILL Escalation (Platform-Aware):* Menangani proses yang mengabaikan SIGTERM (pada POSIX) atau diterminasi langsung (pada Windows) secara andal.
-  4. *Simulated Signal Failure:* Kegagalan sinyal (`kill()` melempar exception atau mengembalikan `false`) terbukti observabel dan tidak ditelan.
-  5. *Preservation of Evidence:* Direktori temporary dan berkas bukti di dalamnya tetap dipertahankan jika terminasi proses gagal.
-- **Verifikasi Test:** 5 tes regresi SEC-10 lulus 100%.
-
-### SEC-11 — Verifikasi Integritas Root Database Pasca Seluruh Test Suite & Uji Guard Sandbox Aktual (P2 / Temuan Phase 6.6 – 6.7)
-- **File & Baris:** `test/audit-security-and-integrity.test.js:103-145, 340-355, 995-1085`.
+### SEC-09 — Fail-Closed Path Canonicalization & Filesystem-Aware Case Sensitivity (P1 / Temuan Phase 6.6 – 6.8)
+- **File & Baris:** `indexer/db.js:13-95, 110-140, 565-575`, `test/audit-security-and-integrity.test.js:1075-1085, 1405-1415, 1495-1610`.
 - **Skenario Risiko:**
-  1. Sebelumnya verifikasi snapshot root database dijalankan sebagai salah satu tes di dalam suite, sehingga tes-tes berikutnya berpotensi memodifikasi database root tanpa terdeteksi.
-  2. Tes sandbox sebelumnya membuat fixture di `sandboxAppDir/wekeepit-index.db`, namun menguji guard terhadap `IndexDB.DEFAULT_DB_PATH`, sehingga target yang diuji berbeda dengan fixture yang dilindungi.
-- **Perbaikan:**
-  1. **Post-Suite Teardown Final Verification:** Baseline snapshot root database repository (`wekeepit-index.db`, `-wal`, `-shm`) dicatat secara read-only sebelum suite berjalan. Perbandingan akhir dijalankan di dalam blok `finally` pada hook `after()` paling akhir seluruh suite, menjamin verifikasi tetap dieksekusi meskipun ada tes sebelumnya yang gagal atau melempar error.
-  2. **Presisi Jaminan Keamanan:** Dokumentasi dan implementasi secara tegas menyatakan bahwa snapshot metadata dan konten (SHA-256, ukuran byte, `mtimeMs`, keberadaan berkas utama, WAL, dan SHM) membuktikan berkas tidak diubah, ditimpa, atau dimigrasi, namun tidak membuktikan bahwa berkas tidak pernah dibuka secara read-only.
-  3. **Pengujian Guard Database Sandbox Aktual:** Fixture pre-existing sandbox (`sandboxAppDir/wekeepit-index.db`) diinjeksi sebagai protected default target. Seluruh saluran resolusi diuji terhadap target ini:
-     - Constructor argument eksplisit (absolute path).
-     - Relative path dan dot segments (`path.join(sandboxAppDir, '.', 'wekeepit-index.db')` dan `'sub/../wekeepit-index.db'`).
-     - Slash variants (forward slashes).
-     - Casing variants (pada platform case-insensitive).
-     - `process.env.INDEX_DB_PATH`.
-     - Constructor fallback (`undefined` / `null` dengan opsi target terinjeksi).
-     - Canonical production `DEFAULT_DB_PATH` tetap tertolak (guard produksi tidak nonaktif).
-  4. Menjamin guard menolak target *sebelum* `better-sqlite3` membukanya dan sebelum berkas WAL/SHM terbentuk atau termodifikasi.
-  5. Membandingkan snapshot fixture sandbox sebelum dan sesudah seluruh upaya akses (terbukti 100% identik).
+  1. Perlindungan database default sebelumnya hanya memeriksa argumen eksplisit di konstruktor. Jika `dbPath` `undefined` atau `null`, modul langsung mengonsumsi `process.env.INDEX_DB_PATH` tanpa validasi setara, sehingga variabel lingkungan yang mengarah ke database default dapat melewati guard.
+  2. Implementasi `realpathSync` sebelumnya menelan error secara diam-diam dengan `catch (_) {}`. Jika terjadi permission error (EACCES/EPERM), symlink loop (ELOOP), broken symlink, atau direktori induk tidak dapat diakses, kegagalan tersebut berisiko membuka akses ke path default yang dilindungi karena kesetaraan kanonikal tidak terverifikasi.
+  3. Pengujian casing sebelumnya menyimpulkan sensitivitas huruf semata-mata dari `process.platform === 'darwin'`, padahal macOS APFS dapat diformat secara case-sensitive.
+- **Perbaikan (Phase 6.8):**
+  1. **Fail-Closed Canonicalization:** Fungsi `canonicalizeDbPath(p)` tidak lagi menelan error `realpathSync`. Bila terjadi `EACCES`, `EPERM`, `ELOOP`, atau broken symlink, error dilempar keluar secara eksplisit. Untuk target yang belum ada, fungsi mencari ancestor direktori yang valid; jika ancestor tidak ditemukan (misal drive nonexistent di Windows), error `Inaccessible parent directory or ancestor` dilempar secara tegas.
+  2. **Fail-Closed Guard Behavior:** Pada `isDefaultDbPath()`, jika canonical equivalence tidak dapat dipastikan secara aman, guard melempar error `[Security Violation] Canonical path equivalence cannot be established safely`, sehingga konstruktor `IndexDB` menolak membuka database.
+  3. **Preservasi Akses Normal:** Akses ke database terisolasi yang valid (file baru di direktori yang ada) dan `:memory:` tetap berfungsi normal tanpa hambatan.
+  4. **Filesystem-Aware Case Sensitivity:** Ditambahkan probe `isPathCaseInsensitive(p)` yang memverifikasi kesamaan inode (`ino`) dan device (`dev`) pada variasi nama direktori riil di disk, sehingga deteksi akurat secara dinamis di Windows, macOS, dan Linux.
+- **Verifikasi Test:** 12 tes regresi SEC-09 lulus 100% (env var bypass, undefined/null, variasi separator/dot/casing, permission errors, symlink cycle/loops, broken symlinks, inaccessible ancestors, valid temp DB, `:memory:`, dan dynamic probe).
+
+### SEC-10 — Removal of Swallowed Termination Errors & Evidence Preservation (P2 / Temuan Phase 6.6 – 6.8)
+- **File & Baris:** `test/audit-security-and-integrity.test.js:9-140, 1612-1755`, `test/server-api.test.js:80-245`.
+- **Skenario Risiko:** Terdapat sisa pola `catch (_) {}` pada pembersihan child process (khususnya pada regresi terminasi). Jika terminasi child process gagal atau status exit belum terkonfirmasi, direktori temporary yang langsung dihapus berisiko menyamarkan kegagalan proses dan menghapus bukti sementara sebelum dapat diinvestigasi.
+- **Perbaikan (Phase 6.8):**
+  1. Menghilangkan pola `catch (_) {}` pada seluruh jalur terminasi dan pembersihan child process di `test/audit-security-and-integrity.test.js` dan `test/server-api.test.js`.
+  2. Penegakan aturan bukti: direktori temporary **tidak boleh dihapus** jika terminasi proses gagal atau status keluar belum terkonfirmasi (`cp.exitCode === null && cp.signalCode === null`).
+  3. Pembersihan direktori hanya dilakukan setelah konfirmasi tegas event `exit` atau `close`.
+  4. Error terminasi asli diangkat ke permukaan (*surfaced*) tanpa ditelan, membedakan secara jelas penanganan kegagalan lifecycle dari penanganan opsional kapabilitas platform (seperti izin symlink OS).
+- **Verifikasi Test:** 5 tes regresi SEC-10 lulus 100% (termasuk verifikasi preservasi bukti direktori dan file log saat kegagalan terminasi disimulasikan).
+
+### SEC-11 — Verifikasi Integritas Root Database Pasca Teardown Suite & Guarded Sandbox Aktual (P2 / Temuan Phase 6.6 – 6.8)
+- **File & Baris:** `test/audit-security-and-integrity.test.js:103-145, 327-353, 995-1085`.
+- **Skenario Risiko:** Verifikasi perbandingan snapshot di suite teardown berisiko terlewat jika test gagal di tengah jalan atau jika error teardown saling menimpa/tertelan. Selain itu, fixtures tidak boleh dibuat di repository root, dan tidak boleh ada klaim palsu bahwa hash yang tidak berubah membuktikan file tidak pernah dibuka read-only.
+- **Perbaikan (Phase 6.8):**
+  1. **Guaranteed Post-Suite Teardown Final Verification:** Baseline snapshot root database repository (`wekeepit-index.db`, `-wal`, `-shm`) dicatat secara read-only sebelum suite berjalan. Perbandingan akhir dijalankan di dalam blok `finally` pada hook `after()` paling akhir seluruh suite, menjamin verifikasi tetap dieksekusi meskipun ada tes sebelumnya yang gagal atau melempar error.
+  2. **Zero Swallowed Teardown Errors:** Teardown error dari pembersihan child process dan error dari perbandingan snapshot root dipantau secara terpisah. Jika keduanya gagal, keduanya dikombinasikan dan dilaporkan secara transparan tanpa ada error yang tertelan.
+  3. **Strict Fixture Isolation:** Seluruh test fixtures dibuat strictly di dalam direktori temporary terisolasi (`os.tmpdir()`), tidak pernah di repository root.
+  4. **Presisi Jaminan Keamanan:** Laporan dan kode secara tegas menyatakan bahwa snapshot metadata dan konten membuktikan berkas tidak diubah, ditimpa, atau dimigrasi, namun tidak membuktikan bahwa berkas tidak pernah dibuka secara read-only.
 - **Verifikasi Test:** Subtest isolasi database, post-suite teardown verification, dan sandbox guard test lulus 100%.
 
 ### SEC-12 — Preservasi Perilaku Error Shutdown (P2 / Temuan Phase 6.6 – 6.7)
@@ -313,35 +296,127 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 
 ## 7. Definition of Done (DoD) Checklist
 
-- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 140/140 tests passed across 34 suites (100% passing).
-- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, zero-touch database isolation, child process termination lifecycle, post-suite teardown integrity verification, actual guarded sandbox path exercise, shutdown error propagation, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
+- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 145/145 tests passed across 34 suites (100% passing, exit code 0).
+- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, zero-touch database isolation, child process termination lifecycle, post-suite teardown integrity verification, actual guarded sandbox path exercise, fail-closed path canonicalization, filesystem-aware case sensitivity, shutdown error propagation, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
 - [x] **3. Temuan memiliki severity, bukti, dan langkah reproduksi:** Terdokumentasi lengkap pada laporan ini.
-- [x] **4. Semua P0, P1, dan P2 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SEC-05, SEC-06, SEC-07, SEC-08, SEC-09, SEC-10, SEC-11, SEC-12, SRCH-01, COLL-01, SQL-01, DOCS-01, SEC-04 selesai diperbaiki menyeluruh.
-- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-security-and-integrity.test.js` dan `test/server-api.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, Phase 6.2, Phase 6.3, Phase 6.5, Phase 6.6, dan Phase 6.7.
-- [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable.
+- [x] **4. Semua P0, P1, dan P2 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SEC-05, SEC-06, SEC-07, SEC-08, SEC-09, SEC-10, SEC-11, SEC-12, SRCH-01, COLL-01, SQL-01, DOCS-01, SEC-04 selesai diperbaiki menyeluruh dan terbukti via tes otomatis.
+- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-security-and-integrity.test.js` dan `test/server-api.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, Phase 6.2, Phase 6.3, Phase 6.5, Phase 6.6, Phase 6.7, dan Phase 6.8 (total 145 tests).
+- [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable (145/145 pass).
 - [x] **7. Data V1, database default, dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` dan `wekeepit-index.db` utuh (0 bytes altered by test suite, zero-touch verified).
-- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi Phase 6.7 serta bukti isolasi database zero-touch dan pengujian terminasi observable.
-- [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi lokal.
+- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi Phase 6.8 (fail-closed canonicalization, filesystem-aware case probe, zero swallowed termination errors, teardown integrity verification, dan preservasi bukti).
+- [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi lokal dan hasil aktual dicatat transparan.
 
 ---
 
-## 8. Langkah Menjalankan Ulang Seluruh Pengujian
+## 8. Verifikasi Eksekusi Uji Coba & Hasil Aktual
 
-Untuk memverifikasi laporan ini secara mandiri:
+### A. Hasil Eksekusi Lokal (Windows 11 x64, Node.js v22.14.0)
 
-```bash
-# 1. Jalankan seluruh test suite otomatis (140 tests, 34 suites)
-npm test
+Pengujian lokal dijalankan dari PowerShell bersih dengan variabel lingkungan `INDEX_DB_PATH` warisan dihapus (`$env:INDEX_DB_PATH = $null`):
 
-# 2. Jalankan test audit keamanan & integritas SQLite secara spesifik (73 tests)
-node --test test/audit-security-and-integrity.test.js
-
-# 3. Jalankan test integrasi server API (7 tests)
-node --test test/server-api.test.js
-
-# 4. Jalankan test audit akurasi search & parser (16 tests)
-node --test test/audit-search-and-parsers.test.js
-
-# 5. Jalankan regression test V1 (16 tests)
-node --test test/v1-regression.test.js
+#### 1. Full Automated Test Suite (`npm test`)
+```powershell
+$env:INDEX_DB_PATH = $null; npm test
 ```
+- **Exit Code:** `0`
+- **Hasil Ringkasan TAP:**
+  ```text
+  # tests 145
+  # suites 34
+  # pass 145
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 6622.8932
+  ```
+
+#### 2. Audit Keamanan & Isolasi Database (`test/audit-security-and-integrity.test.js`)
+```powershell
+$env:INDEX_DB_PATH = $null; node --test test/audit-security-and-integrity.test.js
+```
+- **Exit Code:** `0`
+- **Hasil Ringkasan TAP:**
+  ```text
+  # tests 78
+  # suites 9
+  # pass 78
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 6767.8301
+  ```
+
+#### 3. Integrasi Server API (`test/server-api.test.js`)
+```powershell
+$env:INDEX_DB_PATH = $null; node --test test/server-api.test.js
+```
+- **Exit Code:** `0`
+- **Hasil Ringkasan TAP:**
+  ```text
+  # tests 7
+  # suites 1
+  # pass 7
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 200.5683
+  ```
+
+#### 4. Audit Akurasi Search & Parsers (`test/audit-search-and-parsers.test.js`)
+```powershell
+$env:INDEX_DB_PATH = $null; node --test test/audit-search-and-parsers.test.js
+```
+- **Exit Code:** `0`
+- **Hasil Ringkasan TAP:**
+  ```text
+  # tests 16
+  # suites 6
+  # pass 16
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 108.9271
+  ```
+
+#### 5. Regresi Fitur V1 (`test/v1-regression.test.js`)
+```powershell
+$env:INDEX_DB_PATH = $null; node --test test/v1-regression.test.js
+```
+- **Exit Code:** `0`
+- **Hasil Ringkasan TAP:**
+  ```text
+  # tests 16
+  # suites 4
+  # pass 16
+  # fail 0
+  # cancelled 0
+  # skipped 0
+  # todo 0
+  # duration_ms 67.7644
+  ```
+
+#### 6. Verifikasi Zero-Touch Snapshot Root Repository Database
+Verifikasi hash SHA-256 dan ukuran byte sebelum dan sesudah seluruh test suite dieksekusi:
+```text
+wekeepit-index.db     exists: true  size: 77824 bytes  sha256: d5227be3c28e3aace7d057d9f9d8403a56f3655835b74222d2356ad60985b81b
+wekeepit-index.db-wal exists: false size: 0 bytes      sha256: NONE (never created in root)
+wekeepit-index.db-shm exists: false size: 0 bytes      sha256: NONE (never created in root)
+wekeepit-data.json    exists: true  size: 2868 bytes   sha256: fa47ffbf6da25849a316cfd6ecee576e6655bc5e6bce510f9297a39ebd244dae
+```
+*Hasil:* 0 byte termodifikasi, zero-touch terverifikasi secara ketat.
+
+---
+
+### B. Status GitHub CI & Informasi Pull Request
+
+- **Pull Request:** PR #1 — [https://github.com/rvmdn/wekeepit/pull/1](https://github.com/rvmdn/wekeepit/pull/1)
+- **Branch:** `audit/wekeepit-v2-security` (Base: `main`)
+- **Status PR:** **OPEN** (Unmerged, targeting `main`).
+- **Distribusi Verifikasi:** Hasil pengujian di atas dicatat dari eksekusi lokal pada sistem Windows pengembang. Pada GitHub Actions CI, workflow uji coba dijalankan secara terpisah pada lingkungan runner remote GitHub (Linux & Windows).
+- **Catatan Peninjauan Independen:** Perintah di atas disediakan agar dapat dijalankan ulang secara mandiri oleh peninjau (reviewer) atau auditor pihak ketiga di lingkungan bersih.
+
+> **Peringatan Kepatuhan:** PR #1 harus tetap berstatus **OPEN** dan tidak boleh di-merge langsung ke branch `main`.

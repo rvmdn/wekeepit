@@ -10,26 +10,110 @@ function isTestEnvironment() {
     process.argv.some(arg => typeof arg === 'string' && (arg.includes('test') || arg === '--test'));
 }
 
+function findExistingAncestor(targetPath) {
+  let current = targetPath;
+  const segments = [];
+  while (true) {
+    try {
+      if (fs.existsSync(current)) {
+        return { existingAncestor: current, remainingSegments: segments.reverse() };
+      }
+    } catch (e) {
+      const err = new Error(`Inaccessible path segment '${current}': ${e.message}`);
+      err.code = e.code || 'EACCES';
+      throw err;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return { existingAncestor: null, remainingSegments: segments.reverse() };
+    }
+    segments.push(path.basename(current));
+    current = parent;
+  }
+}
+
+function isPathCaseInsensitive(p) {
+  if (process.platform === 'win32') {
+    return true;
+  }
+  try {
+    const resolved = path.resolve(p);
+    let dir = resolved;
+    try {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+        dir = path.dirname(resolved);
+      }
+    } catch (_) {
+      dir = path.dirname(resolved);
+    }
+
+    while (dir) {
+      if (fs.existsSync(dir)) {
+        const dirName = path.basename(dir);
+        if (dirName && /[a-zA-Z]/.test(dirName)) {
+          const toggled = dirName === dirName.toLowerCase() ? dirName.toUpperCase() : dirName.toLowerCase();
+          const testPath = path.join(path.dirname(dir), toggled);
+          try {
+            if (fs.existsSync(testPath)) {
+              const s1 = fs.statSync(dir);
+              const s2 = fs.statSync(testPath);
+              return s1.dev === s2.dev && s1.ino === s2.ino;
+            } else {
+              return false;
+            }
+          } catch (_) {
+            return false;
+          }
+        }
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
+}
+
 function canonicalizeDbPath(p) {
   if (!p || p === ':memory:') return null;
-  let resolved = path.resolve(p);
+  const resolved = path.resolve(p);
 
+  let canonical;
   try {
-    if (fs.existsSync(resolved)) {
-      resolved = fs.realpathSync(resolved);
-    } else {
-      const parent = path.dirname(resolved);
-      if (fs.existsSync(parent)) {
-        resolved = path.join(fs.realpathSync(parent), path.basename(resolved));
+    canonical = fs.realpathSync(resolved);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      try {
+        const lstat = fs.lstatSync(resolved, { throwIfNoEntry: false });
+        if (lstat && lstat.isSymbolicLink()) {
+          const symErr = new Error(`Broken or unresolvable symbolic link for path: '${resolved}'`);
+          symErr.code = 'ELOOP';
+          throw symErr;
+        }
+      } catch (lstatErr) {
+        if (lstatErr.code !== 'ENOENT') throw lstatErr;
       }
-    }
-  } catch (_) {}
 
-  resolved = path.normalize(resolved);
-  if (process.platform === 'win32') {
-    resolved = resolved.toLowerCase();
+      const { existingAncestor, remainingSegments } = findExistingAncestor(resolved);
+      if (existingAncestor) {
+        canonical = path.join(fs.realpathSync(existingAncestor), ...remainingSegments);
+      } else {
+        const ancestorErr = new Error(`Inaccessible parent directory or ancestor for path: '${resolved}'`);
+        ancestorErr.code = 'ENOENT';
+        throw ancestorErr;
+      }
+    } else {
+      throw err;
+    }
   }
-  return resolved;
+
+  canonical = path.normalize(canonical);
+  if (isPathCaseInsensitive(canonical)) {
+    canonical = canonical.toLowerCase();
+  }
+  return canonical;
 }
 
 let injectedProtectedDefaultDbPath = null;
@@ -49,7 +133,16 @@ function isDefaultDbPath(candidatePath, customDefault = null) {
   if (!candidatePath || candidatePath === ':memory:') {
     return false;
   }
-  const cand = canonicalizeDbPath(candidatePath);
+  let cand;
+  try {
+    cand = canonicalizeDbPath(candidatePath);
+  } catch (err) {
+    // When canonical equivalence cannot be established safely (e.g. permission error,
+    // symlink failure, or inaccessible parent directory), FAIL CLOSED:
+    // the guard must not permit a potentially protected path to be opened.
+    throw new Error(`[Security Violation] Canonical path equivalence cannot be established safely for '${candidatePath}': ${err.message}`);
+  }
+
   const targets = [DEFAULT_DB_PATH];
   if (customDefault) {
     targets.push(customDefault);
@@ -57,7 +150,13 @@ function isDefaultDbPath(candidatePath, customDefault = null) {
     targets.push(injectedProtectedDefaultDbPath);
   }
   return targets.some(target => {
-    const def = canonicalizeDbPath(target);
+    let def;
+    try {
+      def = canonicalizeDbPath(target);
+    } catch (_) {
+      def = path.normalize(path.resolve(target));
+      if (isPathCaseInsensitive(def)) def = def.toLowerCase();
+    }
     return cand !== null && def !== null && cand === def;
   });
 }
@@ -494,6 +593,7 @@ IndexDB.DEFAULT_DB_PATH = DEFAULT_DB_PATH;
 IndexDB.canonicalizeDbPath = canonicalizeDbPath;
 IndexDB.isDefaultDbPath = isDefaultDbPath;
 IndexDB.isTestEnvironment = isTestEnvironment;
+IndexDB.isPathCaseInsensitive = isPathCaseInsensitive;
 IndexDB.setProtectedDefaultDbPathForTest = setProtectedDefaultDbPathForTest;
 IndexDB.clearProtectedDefaultDbPathForTest = clearProtectedDefaultDbPathForTest;
 

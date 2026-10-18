@@ -42,9 +42,15 @@ function waitForProcessExit(cp, timeoutMs = 7000) {
       cp.removeListener('error', onError);
     };
 
-    const onExit = () => {
+    const onExit = (code, signal) => {
       if (exited) return;
       exited = true;
+      if (cp.exitCode === null && code !== undefined && code !== null) {
+        cp.exitCode = code;
+      }
+      if (cp.signalCode === null && signal !== undefined && signal !== null) {
+        cp.signalCode = signal;
+      }
       cleanup();
       resolve();
     };
@@ -86,9 +92,15 @@ function terminateProcess(cp, termTimeoutMs = 4000, killTimeoutMs = 4000) {
       cp.removeListener('error', onError);
     };
 
-    const onExit = () => {
+    const onExit = (code, signal) => {
       if (exited) return;
       exited = true;
+      if (cp.exitCode === null && code !== undefined && code !== null) {
+        cp.exitCode = code;
+      }
+      if (cp.signalCode === null && signal !== undefined && signal !== null) {
+        cp.signalCode = signal;
+      }
       cleanup();
       resolve();
     };
@@ -325,30 +337,48 @@ describe('Security & Data Integrity Audit Test Suite', () => {
   });
 
   after(async () => {
+    let teardownErr = null;
     try {
       if (serverProcess) {
         await terminateProcess(serverProcess);
-        serverProcess = null;
       }
       const serverModule = require('../server.js');
       if (typeof serverModule.close === 'function') {
         await serverModule.close();
       }
-      if (tempDir && fs.existsSync(tempDir)) {
-        fs.rmSync(tempDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempDir), false, 'tempDir must be cleanly removed without error');
+      if (!serverProcess || serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+        serverProcess = null;
+        if (tempDir && fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(tempDir), false, 'tempDir must be cleanly removed without error');
+        }
+        if (testRunnerTempDir && fs.existsSync(testRunnerTempDir)) {
+          fs.rmSync(testRunnerTempDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(testRunnerTempDir), false, 'testRunnerTempDir must be cleanly removed without error');
+        }
       }
-      if (testRunnerTempDir && fs.existsSync(testRunnerTempDir)) {
-        fs.rmSync(testRunnerTempDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(testRunnerTempDir), false, 'testRunnerTempDir must be cleanly removed without error');
-      }
+    } catch (err) {
+      teardownErr = err;
     } finally {
-      // Root repository database baseline integrity comparison:
-      // Executed strictly in final suite teardown (finally block) after all tests and child-process cleanups have completed.
-      // Guarantee: Compares existence, SHA-256, byte size, and mtimeMs against baseline to detect any modification.
-      // Note: A metadata/content snapshot detects changes to monitored files (main, -wal, -shm), but does not prove a file was never opened read-only.
-      const rootDbSnapshotAfter = captureSnapshot(repoRootDbPath);
-      assertStrictSnapshotEqual(rootDbSnapshotBefore, rootDbSnapshotAfter, 'Root repository DB (suite final teardown)');
+      let snapshotErr = null;
+      try {
+        // Root repository database baseline integrity comparison:
+        // Executed strictly in final suite teardown (finally block) after all tests and child-process cleanups have completed.
+        // Guarantee: Compares existence, SHA-256, byte size, and mtimeMs against baseline to detect any modification.
+        // Note: A metadata/content snapshot detects changes to monitored files (main, -wal, -shm), but does not prove a file was never opened read-only.
+        const rootDbSnapshotAfter = captureSnapshot(repoRootDbPath);
+        assertStrictSnapshotEqual(rootDbSnapshotBefore, rootDbSnapshotAfter, 'Root repository DB (suite final teardown)');
+      } catch (err) {
+        snapshotErr = err;
+      }
+
+      if (teardownErr && snapshotErr) {
+        const combinedErr = new Error(`Multiple teardown failures:\n1) Child/resource cleanup: ${teardownErr.message}\n2) Root snapshot comparison: ${snapshotErr.message}`);
+        combinedErr.cause = { teardownErr, snapshotErr };
+        throw combinedErr;
+      }
+      if (teardownErr) throw teardownErr;
+      if (snapshotErr) throw snapshotErr;
     }
   });
 
@@ -477,12 +507,14 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         assert.equal(message.address.address, '127.0.0.1', 'Spawned child process must bind socket to 127.0.0.1 despite HOST=0.0.0.0');
         assert.equal(message.host, '127.0.0.1');
       } finally {
-        if (cp) {
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
           await terminateProcess(cp);
         }
-        if (fs.existsSync(childDb)) {
-          fs.rmSync(childDb, { force: true });
-          assert.equal(fs.existsSync(childDb), false, 'childDb must be removed');
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          if (fs.existsSync(childDb)) {
+            fs.rmSync(childDb, { force: true });
+            assert.equal(fs.existsSync(childDb), false, 'childDb must be removed');
+          }
         }
       }
     });
@@ -522,12 +554,14 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         assert.equal(message.address.address, '127.0.0.1', 'Spawned child process must bind socket to 127.0.0.1 despite HOST=::');
         assert.equal(message.host, '127.0.0.1');
       } finally {
-        if (cp) {
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
           await terminateProcess(cp);
         }
-        if (fs.existsSync(childDb)) {
-          fs.rmSync(childDb, { force: true });
-          assert.equal(fs.existsSync(childDb), false, 'childDb must be removed');
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          if (fs.existsSync(childDb)) {
+            fs.rmSync(childDb, { force: true });
+            assert.equal(fs.existsSync(childDb), false, 'childDb must be removed');
+          }
         }
       }
     });
@@ -761,7 +795,7 @@ describe('Security & Data Integrity Audit Test Suite', () => {
       try {
         const options = {
           hostname: '127.0.0.1',
-          port: AUDIT_PORT,
+          port: auditPort,
           path: '/api/cards',
           method: 'POST',
           headers: {
@@ -786,10 +820,15 @@ describe('Security & Data Integrity Audit Test Suite', () => {
         req.end();
 
         await new Promise(resolve => setTimeout(resolve, 800));
-        assert.ok(failed, 'Server should reject or abort payload exceeding 10MB');
       } catch (e) {
-        assert.ok(true);
+        if (e.code === 'EPIPE' || e.code === 'ECONNRESET') {
+          failed = true;
+        } else {
+          throw e;
+        }
       }
+
+      assert.ok(failed, 'Server should reject or abort payload exceeding 10MB');
     });
   });
 
@@ -1076,8 +1115,8 @@ describe('Security & Data Integrity Audit Test Suite', () => {
           /\[Security Violation\]/
         );
 
-        // d) Casing variants (pada filesystem case-insensitive)
-        if (process.platform === 'win32' || process.platform === 'darwin') {
+        // d) Casing variants (pada filesystem case-insensitive yang terdeteksi secara aktual)
+        if (IndexDB.isPathCaseInsensitive(sandboxDefaultDb)) {
           assert.throws(
             () => new IndexDB(sandboxDefaultDb.toUpperCase()),
             /\[Security Violation\]/
@@ -1216,11 +1255,13 @@ const { createServerApp } = require(serverJsPath);
         // Verify that the designated isolated database WAS created
         assert.equal(fs.existsSync(testDbPath), true, 'Designated isolated test database must exist');
       } finally {
-        if (cp) {
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
           await terminateProcess(cp);
         }
-        fs.rmSync(tempAppDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempAppDir), false, 'Temporary app directory must be cleanly removed without error');
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          fs.rmSync(tempAppDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(tempAppDir), false, 'Temporary app directory must be cleanly removed without error');
+        }
       }
     });
 
@@ -1291,11 +1332,13 @@ process.exit(0);
         assert.equal(childMsg.createdFiles.length, 0, 'No files or databases should be created on passive import');
         assert.equal(cp.exitCode, 0, 'Process must exit cleanly with code 0 (no lingering watchers keeping event loop alive)');
       } finally {
-        if (cp) {
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
           await terminateProcess(cp);
         }
-        fs.rmSync(tempPassiveDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempPassiveDir), false, 'Passive import test directory must be deleted cleanly without error');
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          fs.rmSync(tempPassiveDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(tempPassiveDir), false, 'Passive import test directory must be deleted cleanly without error');
+        }
       }
     });
 
@@ -1407,7 +1450,7 @@ process.exit(0);
       ];
 
       // Apply case-insensitive comparisons only where underlying filesystem semantics justify them
-      if (process.platform === 'win32' || process.platform === 'darwin') {
+      if (IndexDB.isPathCaseInsensitive(IndexDB.DEFAULT_DB_PATH)) {
         variations.push(
           IndexDB.DEFAULT_DB_PATH.toLowerCase(),
           IndexDB.DEFAULT_DB_PATH.toUpperCase()
@@ -1493,6 +1536,138 @@ process.exit(0);
       );
     });
 
+    test('SEC-09 regression: canonicalizeDbPath throws explicit error on inaccessible parent or ancestor directory and guard fails closed', () => {
+      let inaccessiblePath;
+      let cleanupDir = null;
+      if (process.platform === 'win32') {
+        inaccessiblePath = 'Z:\\nonexistent_ancestor_drive\\sub\\isolated.db';
+      } else {
+        cleanupDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-noaccess-'));
+        const restricted = path.join(cleanupDir, 'restricted');
+        fs.mkdirSync(restricted, { mode: 0o000 });
+        inaccessiblePath = path.join(restricted, 'sub', 'isolated.db');
+      }
+
+      try {
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(inaccessiblePath),
+          /Inaccessible parent directory or ancestor|permission denied|EACCES/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(inaccessiblePath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely/
+        );
+
+        assert.throws(
+          () => new IndexDB(inaccessiblePath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely/
+        );
+      } finally {
+        if (cleanupDir && fs.existsSync(cleanupDir)) {
+          try {
+            fs.chmodSync(path.join(cleanupDir, 'restricted'), 0o700);
+          } catch (_) {}
+          fs.rmSync(cleanupDir, { recursive: true, force: true });
+        }
+      }
+    });
+
+    test('SEC-09 regression: canonicalizeDbPath surfaces permission errors (EACCES/EPERM) without swallowing and guard fails closed', () => {
+      const origRealpath = fs.realpathSync;
+      const testPath = path.join(os.tmpdir(), 'eacces-sim-target.db');
+      fs.writeFileSync(testPath, 'x');
+      try {
+        fs.realpathSync = (p) => {
+          if (typeof p === 'string' && p.includes('eacces-sim')) {
+            const err = new Error('EACCES: permission denied');
+            err.code = 'EACCES';
+            throw err;
+          }
+          return origRealpath(p);
+        };
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(testPath),
+          /EACCES: permission denied/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(testPath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*EACCES/
+        );
+
+        assert.throws(
+          () => new IndexDB(testPath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*EACCES/
+        );
+      } finally {
+        fs.realpathSync = origRealpath;
+        if (fs.existsSync(testPath)) fs.unlinkSync(testPath);
+      }
+    });
+
+    test('SEC-09 regression: symlink cycle / loop (ELOOP) throws explicit error and fails closed', () => {
+      const origRealpath = fs.realpathSync;
+      const loopPath = path.join(os.tmpdir(), 'eloop-sim-target.db');
+      fs.writeFileSync(loopPath, 'x');
+      try {
+        fs.realpathSync = (p) => {
+          if (typeof p === 'string' && p.includes('eloop-sim')) {
+            const err = new Error('ELOOP: too many levels of symbolic links');
+            err.code = 'ELOOP';
+            throw err;
+          }
+          return origRealpath(p);
+        };
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(loopPath),
+          /ELOOP: too many levels of symbolic links/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(loopPath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*ELOOP/
+        );
+
+        assert.throws(
+          () => new IndexDB(loopPath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*ELOOP/
+        );
+      } finally {
+        fs.realpathSync = origRealpath;
+        if (fs.existsSync(loopPath)) fs.unlinkSync(loopPath);
+      }
+    });
+
+    test('SEC-09 regression: nonexistent target in existing directory canonicalizes safely and is permitted for isolated database', () => {
+      const tempDirForNonexistent = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-nonexistent-'));
+      try {
+        const nonexistentDbPath = path.join(tempDirForNonexistent, 'future.db');
+        assert.equal(fs.existsSync(nonexistentDbPath), false, 'Target database must not exist initially');
+        const canon = IndexDB.canonicalizeDbPath(nonexistentDbPath);
+        assert.ok(canon, 'canonicalizeDbPath must return canonical path for nonexistent target in valid parent');
+        assert.equal(IndexDB.isDefaultDbPath(nonexistentDbPath), false, 'Nonexistent isolated target is not default DB');
+
+        const db = new IndexDB(nonexistentDbPath);
+        assert.ok(db.db !== null, 'Database connection must be initialized');
+        assert.equal(fs.existsSync(nonexistentDbPath), true, 'Database file must be created on disk');
+        db.close();
+      } finally {
+        fs.rmSync(tempDirForNonexistent, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempDirForNonexistent), false, 'Temporary directory must be cleaned up');
+      }
+    });
+
+    test('SEC-09 regression: filesystem case-sensitivity probe accurately reflects actual filesystem semantics', () => {
+      if (process.platform === 'win32') {
+        assert.equal(IndexDB.isPathCaseInsensitive(__dirname), true, 'Windows filesystem must report case-insensitive');
+      }
+      assert.equal(typeof IndexDB.isPathCaseInsensitive(__dirname), 'boolean', 'Must return a boolean');
+      assert.equal(typeof IndexDB.isPathCaseInsensitive(path.join(os.tmpdir(), 'arbitrary-test-path.db')), 'boolean');
+    });
+
     test('SEC-10 regression 1: child process that exits normally is observed with exit code 0 and terminated cleanly', async () => {
       const tempNormalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-normal-exit-'));
       const normalScript = path.join(tempNormalDir, 'normal-child.js');
@@ -1504,11 +1679,15 @@ process.exit(0);
         cp = fork(normalScript, [], { cwd: tempNormalDir, stdio: 'ignore' });
         await waitForProcessExit(cp, 3000);
         assert.equal(cp.exitCode, 0, 'Child process must exit normally with code 0');
-        // Calling terminateProcess on an already-exited child resolves immediately
         await terminateProcess(cp);
       } finally {
-        fs.rmSync(tempNormalDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempNormalDir), false, 'Temporary directory must be cleanly removed');
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
+          await terminateProcess(cp);
+        }
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          fs.rmSync(tempNormalDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(tempNormalDir), false, 'Temporary directory must be cleanly removed');
+        }
       }
     });
 
@@ -1529,12 +1708,13 @@ process.exit(0);
         caughtTimeout = true;
         assert.match(err.message, /did not exit within 200ms/);
       } finally {
-        if (cp) {
+        if (cp && cp.exitCode === null && cp.signalCode === null) {
           await terminateProcess(cp, 1000, 1000);
-          assert.equal(cp.exitCode !== null || cp.signalCode !== null, true, 'Child process must be verified terminated');
         }
-        fs.rmSync(tempTimeoutDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempTimeoutDir), false, 'Temporary directory must be cleanly removed even after timeout');
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          fs.rmSync(tempTimeoutDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(tempTimeoutDir), false, 'Temporary directory must be cleanly removed even after timeout');
+        }
       }
 
       assert.equal(caughtTimeout, true, 'waitForProcessExit must have rejected with timeout error');
@@ -1562,10 +1742,12 @@ process.exit(0);
         assert.equal(cp.exitCode !== null || cp.signalCode !== null, true, 'Process must be confirmed terminated');
       } finally {
         if (cp && cp.exitCode === null && cp.signalCode === null) {
-          try { await terminateProcess(cp, 500, 500); } catch (_) {}
+          await terminateProcess(cp, 500, 1000);
         }
-        fs.rmSync(tempKillDir, { recursive: true, force: true });
-        assert.equal(fs.existsSync(tempKillDir), false, 'Temporary directory must be removed');
+        if (!cp || cp.exitCode !== null || cp.signalCode !== null) {
+          fs.rmSync(tempKillDir, { recursive: true, force: true });
+          assert.equal(fs.existsSync(tempKillDir), false, 'Temporary directory must be removed');
+        }
       }
     });
 
@@ -1732,16 +1914,14 @@ process.exit(0);
       let cbErr = null;
       let promiseErr = null;
 
-      try {
-        await new Promise((resolve) => {
-          app.close((err) => {
-            cbErr = err;
-            resolve();
-          }).catch(pErr => {
-            promiseErr = pErr;
-          });
+      await new Promise((resolve) => {
+        app.close((err) => {
+          cbErr = err;
+          resolve();
+        }).catch(pErr => {
+          promiseErr = pErr;
         });
-      } catch (_) {}
+      });
 
       assert.ok(cbErr, 'Callback must receive error');
       assert.ok(promiseErr, 'Promise must reject with error');

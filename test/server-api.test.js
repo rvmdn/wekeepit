@@ -82,10 +82,12 @@ describe('Server V2 API Integration Tests', () => {
     } catch (err) {
       if (serverProcess) {
         await terminateProcess(serverProcess);
-        serverProcess = null;
       }
-      if (tempDir && fs.existsSync(tempDir)) {
-        fs.rmSync(tempDir, { recursive: true, force: true });
+      if (!serverProcess || serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+        serverProcess = null;
+        if (tempDir && fs.existsSync(tempDir)) {
+          fs.rmSync(tempDir, { recursive: true, force: true });
+        }
       }
       throw err;
     }
@@ -127,9 +129,15 @@ describe('Server V2 API Integration Tests', () => {
         cp.removeListener('error', onError);
       };
 
-      const onExit = () => {
+      const onExit = (code, signal) => {
         if (exited) return;
         exited = true;
+        if (cp.exitCode === null && code !== undefined && code !== null) {
+          cp.exitCode = code;
+        }
+        if (cp.signalCode === null && signal !== undefined && signal !== null) {
+          cp.signalCode = signal;
+        }
         cleanup();
         resolve();
       };
@@ -171,9 +179,15 @@ describe('Server V2 API Integration Tests', () => {
         cp.removeListener('error', onError);
       };
 
-      const onExit = () => {
+      const onExit = (code, signal) => {
         if (exited) return;
         exited = true;
+        if (cp.exitCode === null && code !== undefined && code !== null) {
+          cp.exitCode = code;
+        }
+        if (cp.signalCode === null && signal !== undefined && signal !== null) {
+          cp.signalCode = signal;
+        }
         cleanup();
         resolve();
       };
@@ -240,11 +254,13 @@ describe('Server V2 API Integration Tests', () => {
   after(async () => {
     if (serverProcess) {
       await terminateProcess(serverProcess);
-      serverProcess = null;
     }
-    if (tempDir && fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
+    if (!serverProcess || serverProcess.exitCode !== null || serverProcess.signalCode !== null) {
+      serverProcess = null;
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        assert.equal(fs.existsSync(tempDir), false, 'Temporary directory must be deleted cleanly without error');
+      }
     }
   });
 
