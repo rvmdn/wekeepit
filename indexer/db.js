@@ -33,47 +33,88 @@ function findExistingAncestor(targetPath) {
 }
 
 function isPathCaseInsensitive(p) {
-  if (process.platform === 'win32') {
-    return true;
+  if (!p || typeof p !== 'string') {
+    throw new TypeError('Invalid path argument for case-sensitivity probe: path must be a non-empty string');
   }
-  try {
-    const resolved = path.resolve(p);
-    let dir = resolved;
-    try {
-      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
-        dir = path.dirname(resolved);
-      }
-    } catch (_) {
-      dir = path.dirname(resolved);
-    }
+  const resolved = path.resolve(p);
+  const { existingAncestor } = findExistingAncestor(resolved);
+  if (!existingAncestor) {
+    throw new Error(`Case-sensitivity probe failed: no accessible ancestor directory found for '${resolved}'`);
+  }
 
-    while (dir) {
-      if (fs.existsSync(dir)) {
-        const dirName = path.basename(dir);
-        if (dirName && /[a-zA-Z]/.test(dirName)) {
-          const toggled = dirName === dirName.toLowerCase() ? dirName.toUpperCase() : dirName.toLowerCase();
-          const testPath = path.join(path.dirname(dir), toggled);
-          try {
-            if (fs.existsSync(testPath)) {
-              const s1 = fs.statSync(dir);
-              const s2 = fs.statSync(testPath);
-              return s1.dev === s2.dev && s1.ino === s2.ino;
-            } else {
-              return false;
-            }
-          } catch (_) {
-            return false;
-          }
-        }
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    return false;
-  } catch (_) {
-    return false;
+  let dir = existingAncestor;
+  try {
+    const st = fs.statSync(dir);
+    if (!st.isDirectory()) dir = path.dirname(dir);
+  } catch (err) {
+    throw new Error(`Case-sensitivity probe failed to stat ancestor directory '${dir}': ${err.message}`);
   }
+
+  let curr = dir;
+  while (curr) {
+    const parent = path.dirname(curr);
+    const base = path.basename(curr);
+    if (base && /[a-zA-Z]/.test(base) && parent !== curr) {
+      let s1;
+      try {
+        s1 = fs.statSync(curr);
+      } catch (err) {
+        throw new Error(`Case-sensitivity probe failed to stat directory '${curr}': ${err.message}`);
+      }
+      const toggled = base === base.toLowerCase() ? base.toUpperCase() : base.toLowerCase();
+      const testPath = path.join(parent, toggled);
+      let s2;
+      try {
+        s2 = fs.statSync(testPath);
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          return false;
+        }
+        throw new Error(`Case-sensitivity probe failed to stat test path '${testPath}': ${err.message}`);
+      }
+      if (s1.dev === s2.dev && s1.ino === s2.ino) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+    if (parent === curr) break;
+    curr = parent;
+  }
+
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (err) {
+    throw new Error(`Case-sensitivity probe failed to read directory entries in '${dir}': ${err.message}`);
+  }
+  for (const entry of entries) {
+    if (/[a-zA-Z]/.test(entry)) {
+      const entryPath = path.join(dir, entry);
+      let s1;
+      try {
+        s1 = fs.statSync(entryPath);
+      } catch (err) {
+        throw new Error(`Case-sensitivity probe failed to stat entry '${entryPath}': ${err.message}`);
+      }
+      const toggled = entry === entry.toLowerCase() ? entry.toUpperCase() : entry.toLowerCase();
+      const testPath = path.join(dir, toggled);
+      let s2;
+      try {
+        s2 = fs.statSync(testPath);
+      } catch (err) {
+        if (err.code === 'ENOENT') return false;
+        throw new Error(`Case-sensitivity probe failed to stat test entry '${testPath}': ${err.message}`);
+      }
+      if (s1.dev === s2.dev && s1.ino === s2.ino) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+  }
+
+  throw new Error(`Unable to determine filesystem case sensitivity: no alphabetical path segment or entry found for '${resolved}'`);
 }
 
 function canonicalizeDbPath(p) {
@@ -110,7 +151,10 @@ function canonicalizeDbPath(p) {
   }
 
   canonical = path.normalize(canonical);
-  if (isPathCaseInsensitive(canonical)) {
+  const probeFn = (typeof IndexDB !== 'undefined' && typeof IndexDB.isPathCaseInsensitive === 'function')
+    ? IndexDB.isPathCaseInsensitive
+    : isPathCaseInsensitive;
+  if (probeFn(canonical)) {
     canonical = canonical.toLowerCase();
   }
   return canonical;
@@ -140,7 +184,7 @@ function isDefaultDbPath(candidatePath, customDefault = null) {
     // When canonical equivalence cannot be established safely (e.g. permission error,
     // symlink failure, or inaccessible parent directory), FAIL CLOSED:
     // the guard must not permit a potentially protected path to be opened.
-    throw new Error(`[Security Violation] Canonical path equivalence cannot be established safely for '${candidatePath}': ${err.message}`);
+    throw new Error(`[Security Violation] Canonical path equivalence cannot be established safely for candidate '${candidatePath}': ${err.message}`);
   }
 
   const targets = [DEFAULT_DB_PATH];
@@ -149,16 +193,23 @@ function isDefaultDbPath(candidatePath, customDefault = null) {
   } else if (injectedProtectedDefaultDbPath) {
     targets.push(injectedProtectedDefaultDbPath);
   }
-  return targets.some(target => {
+
+  for (const target of targets) {
     let def;
     try {
       def = canonicalizeDbPath(target);
-    } catch (_) {
-      def = path.normalize(path.resolve(target));
-      if (isPathCaseInsensitive(def)) def = def.toLowerCase();
+    } catch (err) {
+      // Finding 1: Remove unsafe lexical fallback!
+      // If canonicalization of a protected target cannot be established reliably,
+      // reject the database open with an explicit Security Violation. Do not allow a failed target canonicalization
+      // to become a non-match.
+      throw new Error(`[Security Violation] Canonical path equivalence cannot be established safely for protected target '${target}': ${err.message}`);
     }
-    return cand !== null && def !== null && cand === def;
-  });
+    if (cand !== null && def !== null && cand === def) {
+      return true;
+    }
+  }
+  return false;
 }
 
 class IndexDB {

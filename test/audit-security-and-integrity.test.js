@@ -1661,11 +1661,271 @@ process.exit(0);
     });
 
     test('SEC-09 regression: filesystem case-sensitivity probe accurately reflects actual filesystem semantics', () => {
+      assert.equal(typeof IndexDB.isPathCaseInsensitive(__dirname), 'boolean', 'Must return a boolean');
+      assert.equal(typeof IndexDB.isPathCaseInsensitive(path.join(os.tmpdir(), 'arbitrary-test-path.db')), 'boolean');
       if (process.platform === 'win32') {
         assert.equal(IndexDB.isPathCaseInsensitive(__dirname), true, 'Windows filesystem must report case-insensitive');
       }
-      assert.equal(typeof IndexDB.isPathCaseInsensitive(__dirname), 'boolean', 'Must return a boolean');
-      assert.equal(typeof IndexDB.isPathCaseInsensitive(path.join(os.tmpdir(), 'arbitrary-test-path.db')), 'boolean');
+    });
+
+    test('SEC-09 regression (Phase 6.9): protected-target canonicalization failure causes rejection, never lexical fallback', () => {
+      const origRealpath = fs.realpathSync;
+      const tempCandidateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-candidate-target-'));
+      const candidateDbPath = path.join(tempCandidateDir, 'candidate.db');
+      fs.writeFileSync(candidateDbPath, 'dummy');
+
+      try {
+        fs.realpathSync = (p) => {
+          if (typeof p === 'string' && (p === IndexDB.DEFAULT_DB_PATH || p.includes('wekeepit-index.db'))) {
+            const err = new Error('EACCES: permission denied on protected target');
+            err.code = 'EACCES';
+            throw err;
+          }
+          return origRealpath(p);
+        };
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(candidateDbPath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely for protected target.*wekeepit-index\.db.*EACCES/
+        );
+
+        assert.throws(
+          () => new IndexDB(candidateDbPath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely for protected target.*wekeepit-index\.db.*EACCES/
+        );
+      } finally {
+        fs.realpathSync = origRealpath;
+        if (fs.existsSync(candidateDbPath)) fs.unlinkSync(candidateDbPath);
+        fs.rmSync(tempCandidateDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): test-injected protected target canonicalization failure causes rejection and prevents constructor execution', () => {
+      const origRealpath = fs.realpathSync;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-injected-target-'));
+      const candidatePath = path.join(tempDir, 'cand.db');
+      const injectedProtectedPath = path.join(tempDir, 'injected-protected.db');
+      fs.writeFileSync(candidatePath, 'c');
+      fs.writeFileSync(injectedProtectedPath, 'p');
+
+      try {
+        IndexDB.setProtectedDefaultDbPathForTest(injectedProtectedPath);
+
+        fs.realpathSync = (p) => {
+          if (typeof p === 'string' && p.includes('injected-protected.db')) {
+            const err = new Error('EACCES: permission denied on injected protected target');
+            err.code = 'EACCES';
+            throw err;
+          }
+          return origRealpath(p);
+        };
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(candidatePath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely for protected target.*injected-protected\.db/
+        );
+
+        assert.throws(
+          () => new IndexDB(candidatePath, { defaultDbPath: injectedProtectedPath }),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely for protected target.*injected-protected\.db/
+        );
+      } finally {
+        fs.realpathSync = origRealpath;
+        IndexDB.clearProtectedDefaultDbPathForTest();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): candidate canonicalization failure causes rejection and constructor is never reached', () => {
+      const origRealpath = fs.realpathSync;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-cand-fail-'));
+      const failingCandidate = path.join(tempDir, 'failing-candidate.db');
+      fs.writeFileSync(failingCandidate, 'x');
+
+      try {
+        fs.realpathSync = (p) => {
+          if (typeof p === 'string' && p.includes('failing-candidate.db')) {
+            const err = new Error('EPERM: operation not permitted');
+            err.code = 'EPERM';
+            throw err;
+          }
+          return origRealpath(p);
+        };
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(failingCandidate),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely for candidate.*EPERM/
+        );
+
+        let createdInstance = null;
+        assert.throws(
+          () => { createdInstance = new IndexDB(failingCandidate); },
+          /\[Security Violation\] Canonical path equivalence cannot be established safely for candidate.*EPERM/
+        );
+        assert.equal(createdInstance, null, 'IndexDB instance must never be created when candidate canonicalization fails');
+      } finally {
+        fs.realpathSync = origRealpath;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): case-sensitivity probe failure throws meaningful error and cannot silently produce a guard bypass', () => {
+      const origProbe = IndexDB.isPathCaseInsensitive;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-probe-fail-'));
+      const candidatePath = path.join(tempDir, 'candidate.db');
+      fs.writeFileSync(candidatePath, 'x');
+
+      try {
+        assert.throws(
+          () => IndexDB.isPathCaseInsensitive(''),
+          /Invalid path argument for case-sensitivity probe/
+        );
+
+        IndexDB.isPathCaseInsensitive = () => {
+          const err = new Error('Case-sensitivity probe failed: EACCES permission denied');
+          err.code = 'EACCES';
+          throw err;
+        };
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(candidatePath),
+          /Case-sensitivity probe failed: EACCES permission denied/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(candidatePath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Case-sensitivity probe failed/
+        );
+
+        let instance = null;
+        assert.throws(
+          () => { instance = new IndexDB(candidatePath); },
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Case-sensitivity probe failed/
+        );
+        assert.equal(instance, null, 'Database constructor must never be reached on probe failure');
+      } finally {
+        IndexDB.isPathCaseInsensitive = origProbe;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): case variants on a confirmed case-insensitive filesystem are rejected', () => {
+      const origProbe = IndexDB.isPathCaseInsensitive;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-case-insens-'));
+      const protectedPath = path.join(tempDir, 'ProtectedIndex.db');
+      fs.writeFileSync(protectedPath, 'data');
+
+      try {
+        IndexDB.isPathCaseInsensitive = () => true;
+        IndexDB.setProtectedDefaultDbPathForTest(protectedPath);
+
+        const variant1 = path.join(tempDir, 'PROTECTEDINDEX.DB');
+        const variant2 = path.join(tempDir, 'protectedindex.db');
+        const variant3 = path.join(tempDir, 'pRoTeCtEdInDeX.Db');
+
+        assert.equal(IndexDB.isDefaultDbPath(variant1, protectedPath), true, 'Uppercase variant must match protected path');
+        assert.equal(IndexDB.isDefaultDbPath(variant2, protectedPath), true, 'Lowercase variant must match protected path');
+        assert.equal(IndexDB.isDefaultDbPath(variant3, protectedPath), true, 'Mixed-case variant must match protected path');
+
+        assert.throws(
+          () => new IndexDB(variant1, { defaultDbPath: protectedPath }),
+          /\[Security Violation\] Direct access to protected default database/
+        );
+        assert.throws(
+          () => new IndexDB(variant2, { defaultDbPath: protectedPath }),
+          /\[Security Violation\] Direct access to protected default database/
+        );
+        assert.throws(
+          () => new IndexDB(variant3, { defaultDbPath: protectedPath }),
+          /\[Security Violation\] Direct access to protected default database/
+        );
+      } finally {
+        IndexDB.isPathCaseInsensitive = origProbe;
+        IndexDB.clearProtectedDefaultDbPathForTest();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): different-cased paths on a confirmed case-sensitive filesystem remain distinct where appropriate', () => {
+      const origProbe = IndexDB.isPathCaseInsensitive;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-case-sens-'));
+      const dirA = path.join(tempDir, 'dirA');
+      const dirB = path.join(tempDir, 'dirB');
+      fs.mkdirSync(dirA);
+      fs.mkdirSync(dirB);
+      const protectedPath = path.join(dirA, 'my-protected.db');
+      const distinctVariantPath = path.join(dirB, 'MY-PROTECTED.DB');
+
+      try {
+        IndexDB.isPathCaseInsensitive = () => false;
+        IndexDB.setProtectedDefaultDbPathForTest(protectedPath);
+
+        const canonA = IndexDB.canonicalizeDbPath(protectedPath);
+        const canonB = IndexDB.canonicalizeDbPath(distinctVariantPath);
+        assert.notEqual(canonA, canonB, 'Canonical paths must remain distinct when case-sensitivity is active');
+
+        assert.equal(
+          IndexDB.isDefaultDbPath(distinctVariantPath, protectedPath),
+          false,
+          'Distinct case variant on case-sensitive filesystem must not match protected path'
+        );
+
+        const db = new IndexDB(distinctVariantPath, { defaultDbPath: protectedPath });
+        assert.ok(db.db !== null, 'Distinct database connection must be initialized');
+        db.close();
+      } finally {
+        IndexDB.isPathCaseInsensitive = origProbe;
+        IndexDB.clearProtectedDefaultDbPathForTest();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): production DEFAULT_DB_PATH protection remains active when a test-injected path is used', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-prod-guard-'));
+      const injectedPath = path.join(tempDir, 'custom-test-protected.db');
+      fs.writeFileSync(injectedPath, 'x');
+
+      try {
+        IndexDB.setProtectedDefaultDbPathForTest(injectedPath);
+
+        assert.equal(IndexDB.isDefaultDbPath(IndexDB.DEFAULT_DB_PATH), true);
+        assert.equal(IndexDB.isDefaultDbPath(injectedPath), true);
+
+        assert.throws(
+          () => new IndexDB(IndexDB.DEFAULT_DB_PATH, { defaultDbPath: injectedPath }),
+          /\[Security Violation\] Direct access to default database/
+        );
+
+        assert.throws(
+          () => new IndexDB(injectedPath, { defaultDbPath: injectedPath }),
+          /\[Security Violation\] Direct access to protected default database/
+        );
+      } finally {
+        IndexDB.clearProtectedDefaultDbPathForTest();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.9): normal temporary DB and :memory: operation still work', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-normal-ops-'));
+      const isolatedDbPath = path.join(tempDir, 'normal.db');
+
+      try {
+        const db = new IndexDB(isolatedDbPath);
+        assert.ok(db.db !== null, 'Database connection must be open');
+        assert.equal(fs.existsSync(isolatedDbPath), true, 'Database file must exist on disk');
+        const rows = db.db.prepare('SELECT 1 as val').all();
+        assert.equal(rows[0].val, 1, 'Query must succeed on isolated DB');
+        db.close();
+
+        const memDb = new IndexDB(':memory:');
+        assert.ok(memDb.db !== null, 'In-memory database connection must be open');
+        const memRows = memDb.db.prepare('SELECT 42 as answer').all();
+        assert.equal(memRows[0].answer, 42, 'Query must succeed on :memory: DB');
+        memDb.close();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     test('SEC-10 regression 1: child process that exits normally is observed with exit code 0 and terminated cleanly', async () => {
