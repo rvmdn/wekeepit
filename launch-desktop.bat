@@ -23,9 +23,9 @@ if exist "WeKeepIt.exe" (
     start "" "WeKeepIt.exe"
     exit
 )
-start "" msedge.exe --app=http://127.0.0.1:4321 --window-size=1200,820
+start "" msedge.exe --app=http://127.0.0.1:4321 --window-size=1366,768
 if %errorlevel% neq 0 (
-    start "" chrome.exe --app=http://127.0.0.1:4321 --window-size=1200,820
+    start "" chrome.exe --app=http://127.0.0.1:4321 --window-size=1366,768
 )
 if %errorlevel% neq 0 (
     start http://127.0.0.1:4321

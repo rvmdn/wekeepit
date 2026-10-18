@@ -109,8 +109,14 @@ public partial class Form1 : Form
     private void SetupWindow()
     {
         this.Text = "WeKeepIt v2.0 - Desktop Card Notepad & Document Vault";
-        this.Size = new Size(1280, 840);
-        this.MinimumSize = new Size(540, 420);
+
+        // Base resolution 1366x768, adapted dynamically to display working area
+        var workingArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1366, 768);
+        int targetWidth = Math.Min(1366, workingArea.Width);
+        int targetHeight = Math.Min(768, workingArea.Height);
+
+        this.Size = new Size(targetWidth, targetHeight);
+        this.MinimumSize = new Size(600, 420);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.BackColor = Color.FromArgb(14, 17, 23);
 
