@@ -26,6 +26,8 @@ WeKeepIt-v1.2-Portable/
 WeKeepIt-*-Portable/
 WeKeepIt-*-Portable.zip
 WeKeepIt-*.zip
+package/
+dist/
 
 # OS specific files
 Thumbs.db

@@ -94,6 +94,13 @@ function readJsonFile(filePath, fallback = {}) {
       const data = fs.readFileSync(filePath, 'utf-8');
       return JSON.parse(data);
     }
+    if (filePath === DATA_FILE) {
+      const samplePath = path.join(__dirname, 'wekeepit-data.sample.json');
+      if (fs.existsSync(samplePath)) {
+        const sampleData = fs.readFileSync(samplePath, 'utf-8');
+        return JSON.parse(sampleData);
+      }
+    }
   } catch (err) {
     console.error(`Error reading ${filePath}:`, err.message);
   }
@@ -102,6 +109,10 @@ function readJsonFile(filePath, fallback = {}) {
 
 function writeJsonFile(filePath, data) {
   try {
+    const dir = path.dirname(path.resolve(filePath));
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
     return true;
   } catch (err) {

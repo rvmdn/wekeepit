@@ -28,6 +28,8 @@ public partial class Form1 : Form
     private bool reallyExit = false;
     private readonly string htmlPath;
     private readonly string exeDir;
+    private readonly string dataDir;
+    private readonly bool isPortable;
     private Process? serverProcess = null;
 
     public Form1()
@@ -55,6 +57,35 @@ public partial class Form1 : Form
             else
             {
                 htmlPath = exeDir;
+            }
+        }
+
+        // Detect portable mode vs installed mode
+        bool hasPortableMarker = File.Exists(Path.Combine(exeDir, "portable.dat")) ||
+                                 File.Exists(Path.Combine(exeDir, "WeKeepIt-Portable.bat"));
+        bool isDevWorkspace = File.Exists(Path.Combine(exeDir, "..", "..", "..", "..", "package.json"));
+
+        if (hasPortableMarker || isDevWorkspace)
+        {
+            isPortable = true;
+            dataDir = exeDir;
+        }
+        else
+        {
+            isPortable = false;
+            dataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WeKeepIt");
+            Directory.CreateDirectory(dataDir);
+
+            // Populate sample data in %APPDATA%\WeKeepIt if not yet present
+            var targetData = Path.Combine(dataDir, "wekeepit-data.json");
+            if (!File.Exists(targetData))
+            {
+                var sampleData = Path.Combine(exeDir, "wekeepit-data.sample.json");
+                if (!File.Exists(sampleData)) sampleData = Path.Combine(htmlPath, "wekeepit-data.sample.json");
+                if (File.Exists(sampleData))
+                {
+                    try { File.Copy(sampleData, targetData, false); } catch { }
+                }
             }
         }
 
@@ -285,7 +316,18 @@ public partial class Form1 : Form
 
     private string ReadBestDataFile(string filename)
     {
-        // 1. Check htmlPath (assets)
+        // 1. If installed mode, check dataDir (AppData\WeKeepIt)
+        if (!isPortable)
+        {
+            var pData = Path.Combine(dataDir, filename);
+            if (File.Exists(pData))
+            {
+                var text = File.ReadAllText(pData).Trim();
+                if (text.Length > 2 && text != "[]") return text;
+            }
+        }
+
+        // 2. Check htmlPath (assets)
         var p1 = Path.Combine(htmlPath, filename);
         if (File.Exists(p1))
         {
@@ -293,7 +335,7 @@ public partial class Form1 : Form
             if (text.Length > 2 && text != "[]") return text;
         }
 
-        // 2. Check exeDir
+        // 3. Check exeDir
         var p2 = Path.Combine(exeDir, filename);
         if (File.Exists(p2))
         {
@@ -301,7 +343,7 @@ public partial class Form1 : Form
             if (text.Length > 2 && text != "[]") return text;
         }
 
-        // 3. Check parent directory (root workspace)
+        // 4. Check parent directory (root workspace)
         var p3 = Path.GetFullPath(Path.Combine(exeDir, "..", filename));
         if (File.Exists(p3))
         {
@@ -309,6 +351,11 @@ public partial class Form1 : Form
             if (text.Length > 2 && text != "[]") return text;
         }
 
+        if (!isPortable)
+        {
+            var pData = Path.Combine(dataDir, filename);
+            if (File.Exists(pData)) return File.ReadAllText(pData);
+        }
         if (File.Exists(p1)) return File.ReadAllText(p1);
         if (File.Exists(p2)) return File.ReadAllText(p2);
         if (File.Exists(p3)) return File.ReadAllText(p3);
@@ -320,24 +367,32 @@ public partial class Form1 : Form
     {
         try
         {
-            // 1. htmlPath (assets)
-            var p1 = Path.Combine(htmlPath, filename);
-            File.WriteAllText(p1, content);
-
-            // 2. exeDir
-            var p2 = Path.Combine(exeDir, filename);
-            File.WriteAllText(p2, content);
-
-            // 3. parent directory (if workspace root)
-            var p3 = Path.GetFullPath(Path.Combine(exeDir, "..", filename));
-            if (File.Exists(p3) || Directory.Exists(Path.GetDirectoryName(p3)!))
+            if (!isPortable)
             {
-                File.WriteAllText(p3, content);
+                var pData = Path.Combine(dataDir, filename);
+                File.WriteAllText(pData, content);
+            }
+            else
+            {
+                // 1. htmlPath (assets)
+                var p1 = Path.Combine(htmlPath, filename);
+                try { File.WriteAllText(p1, content); } catch { }
+
+                // 2. exeDir
+                var p2 = Path.Combine(exeDir, filename);
+                try { File.WriteAllText(p2, content); } catch { }
+
+                // 3. parent directory (if workspace root)
+                var p3 = Path.GetFullPath(Path.Combine(exeDir, "..", filename));
+                if (File.Exists(p3) || Directory.Exists(Path.GetDirectoryName(p3)!))
+                {
+                    try { File.WriteAllText(p3, content); } catch { }
+                }
             }
         }
         catch (Exception ex)
         {
-            File.AppendAllText(Path.Combine(exeDir, "save_error.log"), $"[SaveError] {ex}\n\n");
+            try { File.AppendAllText(Path.Combine(dataDir, "save_error.log"), $"[SaveError] {ex}\n\n"); } catch { }
         }
     }
 
@@ -469,15 +524,31 @@ public partial class Form1 : Form
 
             if (File.Exists(serverJs))
             {
+                var nodeExe = Path.Combine(exeDir, "node.exe");
+                if (!File.Exists(nodeExe))
+                {
+                    var localNode = Path.Combine(exeDir, "node", "node.exe");
+                    if (File.Exists(localNode)) nodeExe = localNode;
+                    else nodeExe = "node";
+                }
+
                 var psi = new ProcessStartInfo
                 {
-                    FileName = "node",
+                    FileName = nodeExe,
                     Arguments = $"\"{serverJs}\"",
                     WorkingDirectory = Path.GetDirectoryName(serverJs)!,
                     CreateNoWindow = true,
                     UseShellExecute = false,
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
+
+                if (!isPortable)
+                {
+                    psi.EnvironmentVariables["DATA_FILE_PATH"] = Path.Combine(dataDir, "wekeepit-data.json");
+                    psi.EnvironmentVariables["INDEX_DB_PATH"] = Path.Combine(dataDir, "wekeepit-index.db");
+                    psi.EnvironmentVariables["SCHEMA_FILE_PATH"] = Path.Combine(dataDir, "metadata-schema.json");
+                }
+
                 serverProcess = Process.Start(psi);
                 AppDomain.CurrentDomain.ProcessExit += (s, e) => StopBackgroundServer();
             }

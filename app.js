@@ -696,6 +696,61 @@
     });
     document.getElementById('importFileInput').addEventListener('change', importDataJson);
 
+    // GitHub Release Update Checker
+    const checkUpdateBtn = document.getElementById('checkUpdateBtn');
+    const updateCheckStatus = document.getElementById('updateCheckStatus');
+    if (checkUpdateBtn && updateCheckStatus) {
+      checkUpdateBtn.addEventListener('click', async () => {
+        checkUpdateBtn.disabled = true;
+        checkUpdateBtn.textContent = 'Memeriksa...';
+        updateCheckStatus.style.display = 'block';
+        updateCheckStatus.innerHTML = '<span style="color: var(--accent-color);">⏳ Menghubungi GitHub Releases...</span>';
+
+        try {
+          const res = await fetch('https://api.github.com/repos/rvmdn/wekeepit/releases/latest', {
+            headers: { 'Accept': 'application/vnd.github.v3+json' }
+          });
+          if (!res.ok) {
+            throw new Error(`Status ${res.status}`);
+          }
+          const data = await res.json();
+          const latestTag = (data.tag_name || data.name || '').trim();
+          const currentVersion = 'v2.0.0';
+
+          if (latestTag && latestTag !== currentVersion) {
+            const installerAsset = data.assets?.find(a => typeof a.name === 'string' && a.name.endsWith('-Setup.exe'));
+            const downloadUrl = installerAsset ? installerAsset.browser_download_url : data.html_url;
+
+            updateCheckStatus.innerHTML = `
+              <div style="margin-top: 6px; padding: 10px; border-radius: 6px; background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.35); color: #4ade80;">
+                <div>🎉 <strong>Versi Baru Tersedia: ${latestTag}</strong></div>
+                <div style="font-size: 11px; margin-top: 3px; color: var(--text-primary);">${data.name || ''}</div>
+                <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+                  <a href="${downloadUrl}" target="_blank" class="btn btn-primary" style="font-size: 11px; padding: 4px 10px; text-decoration: none;">⬇️ Unduh Installer</a>
+                  <a href="${data.html_url}" target="_blank" class="btn btn-secondary" style="font-size: 11px; padding: 4px 10px; text-decoration: none;">Lihat Catatan Rilis</a>
+                </div>
+              </div>
+            `;
+          } else {
+            updateCheckStatus.innerHTML = `
+              <div style="margin-top: 6px; color: #4ade80;">
+                ✅ Anda sudah menggunakan versi terbaru (v2.0.0).
+              </div>
+            `;
+          }
+        } catch (err) {
+          updateCheckStatus.innerHTML = `
+            <div style="margin-top: 6px; color: var(--text-muted);">
+              ℹ️ Kunjungi <a href="https://github.com/rvmdn/wekeepit/releases" target="_blank" style="color: var(--accent-color); text-decoration: underline;">GitHub Releases</a> untuk mengunduh rilis installer terbaru.
+            </div>
+          `;
+        } finally {
+          checkUpdateBtn.disabled = false;
+          checkUpdateBtn.textContent = 'Periksa Pembaruan';
+        }
+      });
+    }
+
     // Card Type Selector (Mau Simpan Apa?)
     if (cardTypeSelect) {
       cardTypeSelect.addEventListener('change', () => {
