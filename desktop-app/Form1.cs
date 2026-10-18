@@ -362,6 +362,34 @@ public partial class Form1 : Form
                 var body = root.TryGetProperty("body", out var b) ? (b.GetString() ?? "") : "";
                 notifyIcon.ShowBalloonTip(4000, title, body, ToolTipIcon.Info);
             }
+            else if (type == "PICK_FOLDER")
+            {
+                this.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        using var dialog = new FolderBrowserDialog
+                        {
+                            Description = "Pilih Folder Dokumen untuk Diindeks",
+                            UseDescriptionForTitle = true,
+                            ShowNewFolderButton = true
+                        };
+                        if (dialog.ShowDialog(this) == DialogResult.OK)
+                        {
+                            var payload = JsonSerializer.Serialize(new
+                            {
+                                type = "FOLDER_PICKED",
+                                path = dialog.SelectedPath
+                            });
+                            webView.CoreWebView2.PostWebMessageAsString(payload);
+                        }
+                    }
+                    catch (Exception fex)
+                    {
+                        Console.WriteLine($"Folder picker error: {fex.Message}");
+                    }
+                }));
+            }
         }
         catch (Exception ex)
         {

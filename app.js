@@ -219,6 +219,12 @@
                 localStorage.setItem('wekeepit_schema_backup', JSON.stringify(loadedSchema));
               }
             }
+          } else if (msg && msg.type === 'FOLDER_PICKED' && msg.path) {
+            const folderInput = document.getElementById('folderPathInput');
+            if (folderInput) {
+              folderInput.value = msg.path;
+              folderInput.focus();
+            }
           }
         } catch (err) {
           console.warn('Native message handling error:', err);
@@ -686,6 +692,42 @@
     }
     if (addFolderForm) addFolderForm.addEventListener('submit', handleAddFolderSubmit);
     if (reindexAllBtn) reindexAllBtn.addEventListener('click', handleReindexAll);
+
+    // Browse Folder Explorer Button
+    const browseFolderBtn = document.getElementById('browseFolderBtn');
+    if (browseFolderBtn) {
+      browseFolderBtn.addEventListener('click', async () => {
+        // 1. Native Desktop App (WebView2)
+        if (window.chrome && window.chrome.webview) {
+          try {
+            window.chrome.webview.postMessage(JSON.stringify({ type: 'PICK_FOLDER' }));
+            return;
+          } catch (e) {
+            console.warn('Native picker bridge error, falling back:', e);
+          }
+        }
+
+        // 2. Web Browser via local Node.js endpoint
+        try {
+          browseFolderBtn.disabled = true;
+          const origText = browseFolderBtn.textContent;
+          browseFolderBtn.textContent = '⏳ Membuka...';
+          const res = await fetch('/api/browse-folder');
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.path && folderPathInput) {
+              folderPathInput.value = data.path;
+              folderPathInput.focus();
+            }
+          }
+          browseFolderBtn.textContent = origText;
+        } catch (err) {
+          console.warn('API folder picker error:', err);
+        } finally {
+          browseFolderBtn.disabled = false;
+        }
+      });
+    }
 
     // V2 Document Search Pagination
     if (prevPageBtn) {

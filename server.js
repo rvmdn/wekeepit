@@ -297,6 +297,26 @@ function createServerApp(options = {}) {
       return;
     }
 
+    if (pathname === '/api/browse-folder') {
+      if (req.method === 'GET' || req.method === 'POST') {
+        if (process.env.NODE_ENV === 'test') {
+          sendJson(res, 200, { path: 'C:\\fake-test-folder' });
+          return;
+        }
+        if (process.platform === 'win32') {
+          const { exec } = require('child_process');
+          const psCmd = 'powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = \'Pilih Folder Dokumen\'; $d.ShowNewFolderButton = $true; if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $d.SelectedPath }"';
+          exec(psCmd, (err, stdout) => {
+            const selected = (stdout || '').trim();
+            sendJson(res, 200, { path: selected || null });
+          });
+          return;
+        }
+        sendJson(res, 400, { error: 'Folder picker dialog hanya didukung di Windows.' });
+        return;
+      }
+    }
+
     // --- API V2 Endpoints (Document Library, Indexing, and Search) ---
 
     // Folders management

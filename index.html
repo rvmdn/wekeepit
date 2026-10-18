@@ -447,7 +447,10 @@
           <p class="modal-subtitle">Masukkan path direktori lokal tempat dokumen Anda tersimpan.</p>
           <div class="form-group">
             <label for="folderPathInput" class="form-label">Path Folder Lengkap *</label>
-            <input type="text" id="folderPathInput" class="form-input" placeholder="contoh: C:\Users\Username\Documents\Proyek" required>
+            <div class="input-with-button">
+              <input type="text" id="folderPathInput" class="form-input flex-1" placeholder="contoh: C:\Users\Username\Documents\Proyek" required>
+              <button type="button" class="btn btn-secondary" id="browseFolderBtn" title="Buka dialog penjelajah folder Windows">📂 Telusuri...</button>
+            </div>
           </div>
           <div class="form-group">
             <label class="checkbox-label">
