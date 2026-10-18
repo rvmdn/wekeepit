@@ -155,6 +155,13 @@
   let editingAttachments = [];
   let selectedColor = '#6366f1';
 
+  // --- SERVER & API HELPERS ---
+  const API_BASE = (window.location.origin && window.location.origin.includes(':4321')) ? '' : 'http://127.0.0.1:4321';
+
+  function apiUrl(endpoint) {
+    return API_BASE + endpoint;
+  }
+
   // --- INITIALIZATION ---
   async function init() {
     setupNativeBridge();
@@ -167,21 +174,35 @@
     if (isServerAvailable) {
       pollIndexerStatus();
     }
+    // Auto-reconnect polling if server was started after page loaded
+    setInterval(async () => {
+      if (!isServerAvailable) {
+        await checkServer();
+      }
+    }, 2000);
   }
 
   async function checkServer() {
     try {
-      const res = await fetch('/api/ping', { cache: 'no-store' });
+      const res = await fetch(apiUrl('/api/ping'), { cache: 'no-store' });
       if (res.ok) {
+        const wasOffline = !isServerAvailable;
         isServerAvailable = true;
         updateSyncStatus(true, 'Tersinkron ke Disk (wekeepit-data.json)');
-        return;
+        if (wasOffline) {
+          if (currentDomain === 'documents') {
+            loadFoldersAndDocuments();
+          }
+          pollIndexerStatus();
+        }
+        return true;
       }
     } catch (e) {
       // Offline / standalone
     }
     isServerAvailable = false;
     updateSyncStatus(false, 'Mode Lokal (Browser Storage)');
+    return false;
   }
 
   function updateSyncStatus(online, text) {
@@ -242,7 +263,7 @@
     // 1. Try local server API if running via server.js
     if (isServerAvailable) {
       try {
-        const res = await fetch('/api/cards?_t=' + Date.now());
+        const res = await fetch(apiUrl('/api/cards?_t=') + Date.now());
         if (res.ok) {
           const loaded = await res.json();
           if (Array.isArray(loaded) && loaded.length > 0) {
@@ -312,7 +333,7 @@
     // Node Server API
     if (isServerAvailable) {
       try {
-        await fetch('/api/cards', {
+        await fetch(apiUrl('/api/cards'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cards)
@@ -326,7 +347,7 @@
   async function loadSchema() {
     if (isServerAvailable) {
       try {
-        const res = await fetch('/api/schema?_t=' + Date.now());
+        const res = await fetch(apiUrl('/api/schema?_t=') + Date.now());
         if (res.ok) {
           const schema = await res.json();
           metaEngine.setSchema(schema);
@@ -390,7 +411,7 @@
 
     if (isServerAvailable) {
       try {
-        await fetch('/api/schema', {
+        await fetch(apiUrl('/api/schema'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(schema)
@@ -712,7 +733,7 @@
           browseFolderBtn.disabled = true;
           const origText = browseFolderBtn.textContent;
           browseFolderBtn.textContent = '⏳ Membuka...';
-          const res = await fetch('/api/browse-folder');
+          const res = await fetch(apiUrl('/api/browse-folder'));
           if (res.ok) {
             const data = await res.json();
             if (data && data.path && folderPathInput) {
@@ -780,7 +801,7 @@
     if (domain === 'board') {
       renderAll();
     } else if (domain === 'documents') {
-      loadFoldersAndDocuments();
+      checkServer().then(() => loadFoldersAndDocuments());
     } else if (domain === 'search') {
       if (searchQuery.trim()) {
         performDocumentSearch(searchResults.page || 1);
@@ -818,7 +839,7 @@
       : [];
 
     try {
-      const res = await fetch('/api/folders', {
+      const res = await fetch(apiUrl('/api/folders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: folderPath, recursive, exclusions })
@@ -834,7 +855,7 @@
 
       // Trigger automatic scan for the new folder
       if (result.folder && result.folder.id) {
-        await fetch('/api/indexer/scan', {
+        await fetch(apiUrl('/api/indexer/scan'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ folderId: result.folder.id })
@@ -852,7 +873,7 @@
       return;
     }
     try {
-      const res = await fetch('/api/indexer/scan', {
+      const res = await fetch(apiUrl('/api/indexer/scan'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
@@ -872,7 +893,7 @@
     async function check() {
       if (!isServerAvailable) return;
       try {
-        const res = await fetch('/api/indexer/status?_t=' + Date.now());
+        const res = await fetch(apiUrl('/api/indexer/status?_t=') + Date.now());
         if (res.ok) {
           const data = await res.json();
           updateIndexerStatusUI(data);
@@ -882,7 +903,7 @@
           } else {
             // Idle: if in documents view, refresh documents table
             if (currentDomain === 'documents') {
-              const docsRes = await fetch('/api/documents?_t=' + Date.now());
+              const docsRes = await fetch(apiUrl('/api/documents?_t=') + Date.now());
               if (docsRes.ok) {
                 indexedDocsList = await docsRes.json();
                 renderIndexedDocsTable();
@@ -929,14 +950,17 @@
 
   async function loadFoldersAndDocuments() {
     if (!isServerAvailable) {
+      await checkServer();
+    }
+    if (!isServerAvailable) {
       renderOfflineDocsNotice();
       return;
     }
     try {
       const [foldersRes, docsRes, statusRes] = await Promise.all([
-        fetch('/api/folders?_t=' + Date.now()),
-        fetch('/api/documents?_t=' + Date.now()),
-        fetch('/api/indexer/status?_t=' + Date.now())
+        fetch(apiUrl('/api/folders?_t=') + Date.now()),
+        fetch(apiUrl('/api/documents?_t=') + Date.now()),
+        fetch(apiUrl('/api/indexer/status?_t=') + Date.now())
       ]);
 
       if (foldersRes.ok) {
@@ -1017,7 +1041,7 @@
 
       card.querySelector('.btn-toggle-folder').addEventListener('click', async () => {
         try {
-          const res = await fetch(`/api/folders/${folder.id}`, {
+          const res = await fetch(apiUrl(`/api/folders/${folder.id}`), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ enabled: !isEnabled })
@@ -1033,7 +1057,7 @@
 
       card.querySelector('.btn-scan-folder').addEventListener('click', async () => {
         try {
-          const res = await fetch('/api/indexer/scan', {
+          const res = await fetch(apiUrl('/api/indexer/scan'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ folderId: folder.id })
@@ -1052,7 +1076,7 @@
           return;
         }
         try {
-          const res = await fetch(`/api/folders/${folder.id}`, {
+          const res = await fetch(apiUrl(`/api/folders/${folder.id}`), {
             method: 'DELETE'
           });
           if (res.ok) {
@@ -1166,7 +1190,7 @@
         limit: '10'
       });
 
-      const res = await fetch(`/api/search?${params.toString()}`);
+      const res = await fetch(apiUrl(`/api/search?${params.toString()}`));
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -1320,7 +1344,7 @@
       return;
     }
     try {
-      const res = await fetch('/api/open-file', {
+      const res = await fetch(apiUrl('/api/open-file'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: filePath, folderOnly })

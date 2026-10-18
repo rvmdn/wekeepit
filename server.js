@@ -58,7 +58,8 @@ const ALLOWED_DOC_EXTENSIONS = new Set(['.md', '.pdf', '.docx', '.xlsx']);
 
 const ALLOWED_LOOPBACK_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 const ALLOWED_EXACT_ORIGINS = new Set([
-  'https://wekeepit.local'
+  'https://wekeepit.local',
+  'http://wekeepit.local'
 ]);
 
 function isAllowedOrigin(origin) {

@@ -213,7 +213,7 @@ public partial class Form1 : Form
             webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
             webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
 
-            // Map local directory to virtual domain https://wekeepit.local/
+            // Map local directory to virtual domain wekeepit.local as offline fallback
             webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
                 "wekeepit.local",
                 htmlPath,
@@ -222,7 +222,35 @@ public partial class Form1 : Form
 
             webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
-            webView.CoreWebView2.Navigate("https://wekeepit.local/index.html");
+
+            // Check if backend server is available on port 4321
+            bool serverOnline = false;
+            for (int i = 0; i < 6; i++)
+            {
+                try
+                {
+                    using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
+                    var res = await client.GetAsync("http://127.0.0.1:4321/api/ping");
+                    if (res.IsSuccessStatusCode)
+                    {
+                        serverOnline = true;
+                        break;
+                    }
+                }
+                catch
+                {
+                    await Task.Delay(250);
+                }
+            }
+
+            if (serverOnline)
+            {
+                webView.CoreWebView2.Navigate("http://127.0.0.1:4321/index.html");
+            }
+            else
+            {
+                webView.CoreWebView2.Navigate("http://wekeepit.local/index.html");
+            }
         }
         catch (Exception ex)
         {
