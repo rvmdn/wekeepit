@@ -531,13 +531,15 @@
 
     // Theme & Appearance Manager
     const THEMES = [
-      { id: 'obsidian', name: 'Obsidian', headerHex: '#161b22', dot: 'linear-gradient(135deg, #0e1117 50%, #6366f1 50%)' },
-      { id: 'ocean', name: 'Deep Ocean', headerHex: '#0f172a', dot: 'linear-gradient(135deg, #070d19 50%, #0284c7 50%)' },
-      { id: 'forest', name: 'Nord Forest', headerHex: '#0d2017', dot: 'linear-gradient(135deg, #07140e 50%, #059669 50%)' },
-      { id: 'amethyst', name: 'Amethyst', headerHex: '#181128', dot: 'linear-gradient(135deg, #0f0a1a 50%, #9333ea 50%)' },
-      { id: 'amber', name: 'Sunset Amber', headerHex: '#1c150e', dot: 'linear-gradient(135deg, #120d08 50%, #d97706 50%)' },
-      { id: 'cyberpunk', name: 'Cyberpunk', headerHex: '#0c0d14', dot: 'linear-gradient(135deg, #050508 50%, #00f0ff 50%)' },
-      { id: 'crimson', name: 'Crimson Rose', headerHex: '#1c0c10', dot: 'linear-gradient(135deg, #120709 50%, #e11d48 50%)' }
+      { id: 'light-snow', name: 'Daylight Snow', isLight: true, headerHex: '#ffffff', dot: 'linear-gradient(135deg, #f6f8fa 50%, #4f46e5 50%)' },
+      { id: 'light-cream', name: 'Warm Cream', isLight: true, headerHex: '#f7f3e8', dot: 'linear-gradient(135deg, #fcf9f2 50%, #b45309 50%)' },
+      { id: 'obsidian', name: 'Obsidian', isLight: false, headerHex: '#161b22', dot: 'linear-gradient(135deg, #0e1117 50%, #6366f1 50%)' },
+      { id: 'ocean', name: 'Deep Ocean', isLight: false, headerHex: '#0f172a', dot: 'linear-gradient(135deg, #070d19 50%, #0284c7 50%)' },
+      { id: 'forest', name: 'Nord Forest', isLight: false, headerHex: '#0d2017', dot: 'linear-gradient(135deg, #07140e 50%, #059669 50%)' },
+      { id: 'amethyst', name: 'Amethyst', isLight: false, headerHex: '#181128', dot: 'linear-gradient(135deg, #0f0a1a 50%, #9333ea 50%)' },
+      { id: 'amber', name: 'Sunset Amber', isLight: false, headerHex: '#1c150e', dot: 'linear-gradient(135deg, #120d08 50%, #d97706 50%)' },
+      { id: 'cyberpunk', name: 'Cyberpunk', isLight: false, headerHex: '#0c0d14', dot: 'linear-gradient(135deg, #050508 50%, #00f0ff 50%)' },
+      { id: 'crimson', name: 'Crimson Rose', isLight: false, headerHex: '#1c0c10', dot: 'linear-gradient(135deg, #120709 50%, #e11d48 50%)' }
     ];
 
     const themeToggleBtn = document.getElementById('themeToggleBtn');
@@ -611,7 +613,8 @@
           window.chrome.webview.postMessage(JSON.stringify({
             type: 'SET_THEME',
             transparent: isAcrylic,
-            headerColor: themeObj ? themeObj.headerHex : '#161b22'
+            headerColor: themeObj ? themeObj.headerHex : '#161b22',
+            isLight: themeObj ? !!themeObj.isLight : false
           }));
         } catch (e) {}
       }

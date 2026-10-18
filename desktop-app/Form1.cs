@@ -70,17 +70,17 @@ public partial class Form1 : Form
         await InitializeWebViewAsync();
     }
 
-    public void ApplyDarkTranslucentTheme(bool acrylic = true, string? headerHex = null)
+    public void ApplyDarkTranslucentTheme(bool acrylic = true, string? headerHex = null, bool isLight = false)
     {
         try
         {
-            // 1. Force native Windows Dark Mode on Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE)
-            int darkMode = 1;
+            // 1. Force native Windows Dark Mode or Light Mode on Title Bar (DWMWA_USE_IMMERSIVE_DARK_MODE)
+            int darkMode = isLight ? 0 : 1;
             DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
 
-            // 2. Set Title Bar background color to seamlessly match header (#161b22 by default)
-            // COLORREF format is 0x00BBGGRR: #161b22 -> R=0x16, G=0x1B, B=0x22 -> 0x00221B16
-            int captionColor = 0x00221B16;
+            // 2. Set Title Bar background color to seamlessly match header
+            // COLORREF format is 0x00BBGGRR: default #161b22 (0x00221B16) or #f6f8fa for light (0x00FAF8F6)
+            int captionColor = isLight ? 0x00FAF8F6 : 0x00221B16;
             if (!string.IsNullOrEmpty(headerHex) && headerHex.StartsWith("#") && headerHex.Length == 7)
             {
                 try
@@ -94,8 +94,8 @@ public partial class Form1 : Form
             }
             DwmSetWindowAttribute(this.Handle, DWMWA_CAPTION_COLOR, ref captionColor, sizeof(int));
 
-            // 3. Set Title Bar text color (#f0f6fc)
-            int textColor = 0x00FCF6F0;
+            // 3. Set Title Bar text color (#0f172a for light, #f0f6fc for dark)
+            int textColor = isLight ? 0x002A170F : 0x00FCF6F0;
             DwmSetWindowAttribute(this.Handle, DWMWA_TEXT_COLOR, ref textColor, sizeof(int));
 
             // 4. In Windows 11 22H2/23H2/24H2: Enable Mica or Acrylic backdrop
@@ -400,7 +400,8 @@ public partial class Form1 : Form
             {
                 bool isTransparent = root.TryGetProperty("transparent", out var transProp) && transProp.GetBoolean();
                 string? headerColor = root.TryGetProperty("headerColor", out var colProp) ? colProp.GetString() : null;
-                ApplyDarkTranslucentTheme(isTransparent, headerColor);
+                bool isLight = root.TryGetProperty("isLight", out var lightProp) && lightProp.GetBoolean();
+                ApplyDarkTranslucentTheme(isTransparent, headerColor, isLight);
             }
             else if (type == "NATIVE_NOTIFY")
             {

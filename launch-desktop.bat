@@ -19,7 +19,7 @@ if %errorlevel% neq 0 goto WaitForServer
 
 :OpenApp
 echo [WeKeepIt] Membuka jendela desktop board...
-if exist "WeKeepIt.exe" (
+if exist "WeKeepIt.exe" if exist "WeKeepIt.runtimeconfig.json" (
     start "" "WeKeepIt.exe"
     exit
 )
