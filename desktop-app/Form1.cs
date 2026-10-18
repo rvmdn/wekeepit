@@ -1,6 +1,8 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -26,6 +28,7 @@ public partial class Form1 : Form
     private bool reallyExit = false;
     private readonly string htmlPath;
     private readonly string exeDir;
+    private Process? serverProcess = null;
 
     public Form1()
     {
@@ -55,6 +58,7 @@ public partial class Form1 : Form
             }
         }
 
+        StartBackgroundServerIfAvailable();
         SetupWindow();
         SetupSystemTray();
     }
@@ -365,6 +369,64 @@ public partial class Form1 : Form
         }
     }
 
+    private void StartBackgroundServerIfAvailable()
+    {
+        try
+        {
+            // Check if server is already running on port 4321
+            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
+            var response = client.GetAsync("http://127.0.0.1:4321/api/ping").GetAwaiter().GetResult();
+            if (response.IsSuccessStatusCode)
+            {
+                return; // Server is already running
+            }
+        }
+        catch { }
+
+        try
+        {
+            var serverJs = Path.Combine(exeDir, "server.js");
+            if (!File.Exists(serverJs))
+            {
+                var parentServerJs = Path.GetFullPath(Path.Combine(exeDir, "..", "server.js"));
+                if (File.Exists(parentServerJs)) serverJs = parentServerJs;
+            }
+
+            if (File.Exists(serverJs))
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "node",
+                    Arguments = $"\"{serverJs}\"",
+                    WorkingDirectory = Path.GetDirectoryName(serverJs)!,
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
+                serverProcess = Process.Start(psi);
+                AppDomain.CurrentDomain.ProcessExit += (s, e) => StopBackgroundServer();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Background server start error: {ex.Message}");
+        }
+    }
+
+    private void StopBackgroundServer()
+    {
+        if (serverProcess != null && !serverProcess.HasExited)
+        {
+            try
+            {
+                serverProcess.Kill(true);
+                serverProcess.Dispose();
+                serverProcess = null;
+            }
+            catch { }
+        }
+    }
+
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         if (!reallyExit)
@@ -380,6 +442,7 @@ public partial class Form1 : Form
         }
         else
         {
+            StopBackgroundServer();
             notifyIcon.Visible = false;
             base.OnFormClosing(e);
         }
