@@ -529,33 +529,130 @@
       });
     });
 
-    // Theme toggle (Dark Solid vs Dark Transparan Acrylic)
-    const themeToggleBtn = document.getElementById('themeToggleBtn');
-    const themeLabel = document.getElementById('themeLabel');
+    // Theme & Appearance Manager
+    const THEMES = [
+      { id: 'obsidian', name: 'Obsidian', headerHex: '#161b22', dot: 'linear-gradient(135deg, #0e1117 50%, #6366f1 50%)' },
+      { id: 'ocean', name: 'Deep Ocean', headerHex: '#0f172a', dot: 'linear-gradient(135deg, #070d19 50%, #0284c7 50%)' },
+      { id: 'forest', name: 'Nord Forest', headerHex: '#0d2017', dot: 'linear-gradient(135deg, #07140e 50%, #059669 50%)' },
+      { id: 'amethyst', name: 'Amethyst', headerHex: '#181128', dot: 'linear-gradient(135deg, #0f0a1a 50%, #9333ea 50%)' },
+      { id: 'amber', name: 'Sunset Amber', headerHex: '#1c150e', dot: 'linear-gradient(135deg, #120d08 50%, #d97706 50%)' },
+      { id: 'cyberpunk', name: 'Cyberpunk', headerHex: '#0c0d14', dot: 'linear-gradient(135deg, #050508 50%, #00f0ff 50%)' },
+      { id: 'crimson', name: 'Crimson Rose', headerHex: '#1c0c10', dot: 'linear-gradient(135deg, #120709 50%, #e11d48 50%)' }
+    ];
 
-    function applyTheme(isAcrylic) {
-      document.body.classList.toggle('theme-acrylic', isAcrylic);
-      if (themeLabel) {
-        themeLabel.textContent = isAcrylic ? 'Transparan' : 'Solid';
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const themeMenuDropdown = document.getElementById('themeMenuDropdown');
+    const themeLabel = document.getElementById('themeLabel');
+    const themePaletteGrid = document.getElementById('themePaletteGrid');
+    const themeOptAcrylic = document.getElementById('themeOptAcrylic');
+    const themeOptGlow = document.getElementById('themeOptGlow');
+    const themeOptMono = document.getElementById('themeOptMono');
+
+    let currentThemeId = localStorage.getItem('wekeepit_theme_palette') || 'obsidian';
+    let isAcrylic = localStorage.getItem('wekeepit_theme') !== 'solid'; // default true
+    let isGlow = localStorage.getItem('wekeepit_theme_glow') === 'true';
+    let isMono = localStorage.getItem('wekeepit_theme_mono') === 'true';
+
+    function renderThemeChips() {
+      if (!themePaletteGrid) return;
+      themePaletteGrid.innerHTML = '';
+      THEMES.forEach(t => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `theme-chip-btn ${t.id === currentThemeId ? 'active' : ''}`;
+        btn.dataset.themeId = t.id;
+        btn.innerHTML = `
+          <span class="theme-dot" style="background: ${t.dot}"></span>
+          <span class="theme-chip-name">${t.name}</span>
+          <span class="theme-chip-check">✓</span>
+        `;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setThemePalette(t.id);
+        });
+        themePaletteGrid.appendChild(btn);
+      });
+    }
+
+    function setThemePalette(themeId) {
+      currentThemeId = themeId;
+      document.documentElement.setAttribute('data-theme', themeId);
+      localStorage.setItem('wekeepit_theme_palette', themeId);
+
+      const themeObj = THEMES.find(t => t.id === themeId);
+      if (themeLabel && themeObj) {
+        themeLabel.textContent = themeObj.name;
       }
+
+      renderThemeChips();
+      notifyNativeTheme();
+    }
+
+    function applyCosmetics() {
+      document.body.classList.toggle('theme-acrylic', isAcrylic);
+      document.body.classList.toggle('effect-glow', isGlow);
+      document.body.classList.toggle('font-mono', isMono);
+
+      if (themeOptAcrylic) themeOptAcrylic.checked = isAcrylic;
+      if (themeOptGlow) themeOptGlow.checked = isGlow;
+      if (themeOptMono) themeOptMono.checked = isMono;
+
       localStorage.setItem('wekeepit_theme', isAcrylic ? 'acrylic' : 'solid');
+      localStorage.setItem('wekeepit_theme_glow', isGlow ? 'true' : 'false');
+      localStorage.setItem('wekeepit_theme_mono', isMono ? 'true' : 'false');
+
+      notifyNativeTheme();
+    }
+
+    function notifyNativeTheme() {
       if (window.chrome && window.chrome.webview) {
         try {
-          window.chrome.webview.postMessage(JSON.stringify({ type: 'SET_THEME', transparent: isAcrylic }));
+          const themeObj = THEMES.find(t => t.id === currentThemeId);
+          window.chrome.webview.postMessage(JSON.stringify({
+            type: 'SET_THEME',
+            transparent: isAcrylic,
+            headerColor: themeObj ? themeObj.headerHex : '#161b22'
+          }));
         } catch (e) {}
       }
     }
 
-    if (themeToggleBtn) {
-      themeToggleBtn.addEventListener('click', () => {
-        const isCurrentAcrylic = document.body.classList.contains('theme-acrylic');
-        applyTheme(!isCurrentAcrylic);
+    if (themeToggleBtn && themeMenuDropdown) {
+      themeToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        themeMenuDropdown.classList.toggle('hidden');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!themeMenuDropdown.contains(e.target) && e.target !== themeToggleBtn && !themeToggleBtn.contains(e.target)) {
+          themeMenuDropdown.classList.add('hidden');
+        }
       });
     }
 
-    // Default to acrylic (transparent) as requested
-    const savedTheme = localStorage.getItem('wekeepit_theme') || 'acrylic';
-    applyTheme(savedTheme === 'acrylic');
+    if (themeOptAcrylic) {
+      themeOptAcrylic.addEventListener('change', (e) => {
+        isAcrylic = e.target.checked;
+        applyCosmetics();
+      });
+    }
+
+    if (themeOptGlow) {
+      themeOptGlow.addEventListener('change', (e) => {
+        isGlow = e.target.checked;
+        applyCosmetics();
+      });
+    }
+
+    if (themeOptMono) {
+      themeOptMono.addEventListener('change', (e) => {
+        isMono = e.target.checked;
+        applyCosmetics();
+      });
+    }
+
+    setThemePalette(currentThemeId);
+    applyCosmetics();
 
     // Widget mode toggle
     const widgetModeBtn = document.getElementById('widgetModeBtn');

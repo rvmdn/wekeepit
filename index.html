@@ -44,9 +44,31 @@
         <button id="newCardBtn" class="btn btn-primary" title="Tambah Catatan Baru">
           <span>➕</span> <span class="btn-text">Catatan Baru</span>
         </button>
-        <button id="themeToggleBtn" class="btn btn-secondary" title="Alihkan Tema: Dark Solid / Transparan Glass">
-          <span>✨</span> <span id="themeLabel" class="btn-text">Transparan</span>
-        </button>
+        <div class="theme-dropdown-container">
+          <button id="themeToggleBtn" class="btn btn-secondary" title="Pilih Tema &amp; Tampilan">
+            <span>🎨</span> <span id="themeLabel" class="btn-text">Tema</span>
+          </button>
+          <div id="themeMenuDropdown" class="theme-menu-dropdown hidden">
+            <div class="theme-menu-header">
+              <span class="theme-menu-title">🎨 Palet Tema &amp; Kosmetik</span>
+            </div>
+            <div id="themePaletteGrid" class="theme-palette-grid"></div>
+            <div class="theme-options-list">
+              <label class="theme-option-row">
+                <span class="theme-option-label">✨ Efek Kaca (Acrylic Blur)</span>
+                <input type="checkbox" id="themeOptAcrylic" class="theme-switch" checked>
+              </label>
+              <label class="theme-option-row">
+                <span class="theme-option-label">🌟 Card Hover Glow</span>
+                <input type="checkbox" id="themeOptGlow" class="theme-switch">
+              </label>
+              <label class="theme-option-row">
+                <span class="theme-option-label">💻 Font Tech (Monospace)</span>
+                <input type="checkbox" id="themeOptMono" class="theme-switch">
+              </label>
+            </div>
+          </div>
+        </div>
         <button id="widgetModeBtn" class="btn btn-secondary" title="Mode Widget Ringkas">
           <span>🪟</span> <span class="btn-label btn-text">Widget</span>
         </button>

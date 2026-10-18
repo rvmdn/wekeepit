@@ -70,7 +70,7 @@ public partial class Form1 : Form
         await InitializeWebViewAsync();
     }
 
-    public void ApplyDarkTranslucentTheme(bool acrylic = true)
+    public void ApplyDarkTranslucentTheme(bool acrylic = true, string? headerHex = null)
     {
         try
         {
@@ -78,9 +78,20 @@ public partial class Form1 : Form
             int darkMode = 1;
             DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref darkMode, sizeof(int));
 
-            // 2. Set Title Bar background color to seamlessly match header (#161b22)
+            // 2. Set Title Bar background color to seamlessly match header (#161b22 by default)
             // COLORREF format is 0x00BBGGRR: #161b22 -> R=0x16, G=0x1B, B=0x22 -> 0x00221B16
             int captionColor = 0x00221B16;
+            if (!string.IsNullOrEmpty(headerHex) && headerHex.StartsWith("#") && headerHex.Length == 7)
+            {
+                try
+                {
+                    int r = Convert.ToInt32(headerHex.Substring(1, 2), 16);
+                    int g = Convert.ToInt32(headerHex.Substring(3, 2), 16);
+                    int b = Convert.ToInt32(headerHex.Substring(5, 2), 16);
+                    captionColor = (b << 16) | (g << 8) | r;
+                }
+                catch { }
+            }
             DwmSetWindowAttribute(this.Handle, DWMWA_CAPTION_COLOR, ref captionColor, sizeof(int));
 
             // 3. Set Title Bar text color (#f0f6fc)
@@ -388,7 +399,8 @@ public partial class Form1 : Form
             else if (type == "SET_THEME")
             {
                 bool isTransparent = root.TryGetProperty("transparent", out var transProp) && transProp.GetBoolean();
-                ApplyDarkTranslucentTheme(isTransparent);
+                string? headerColor = root.TryGetProperty("headerColor", out var colProp) ? colProp.GetString() : null;
+                ApplyDarkTranslucentTheme(isTransparent, headerColor);
             }
             else if (type == "NATIVE_NOTIFY")
             {
