@@ -1928,6 +1928,281 @@ process.exit(0);
       }
     });
 
+    test('SEC-09 regression (Phase 6.10): final-component dangling symlink is rejected and database constructor is never reached', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-dangling-leaf-'));
+      const danglingLeaf = path.join(tempDir, 'dangling_leaf.db');
+      let createdSymlink = false;
+      try {
+        fs.symlinkSync(path.join(tempDir, 'nonexistent_target.db'), danglingLeaf);
+        createdSymlink = true;
+      } catch (_) {}
+
+      const origLstat = fs.lstatSync;
+      const origRealpath = fs.realpathSync;
+      try {
+        if (!createdSymlink) {
+          fs.lstatSync = (p, opts) => {
+            if (typeof p === 'string' && p.includes('dangling_leaf.db')) {
+              return { isSymbolicLink: () => true, isDirectory: () => false, isFile: () => false };
+            }
+            return origLstat(p, opts);
+          };
+          fs.realpathSync = (p) => {
+            if (typeof p === 'string' && p.includes('dangling_leaf.db')) {
+              const err = new Error('ENOENT: no such file or directory');
+              err.code = 'ENOENT';
+              throw err;
+            }
+            return origRealpath(p);
+          };
+        }
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(danglingLeaf),
+          /Broken or unresolvable symbolic link.*dangling_leaf\.db/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(danglingLeaf),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Broken or unresolvable symbolic link.*dangling_leaf\.db/
+        );
+
+        let instance = null;
+        assert.throws(
+          () => { instance = new IndexDB(danglingLeaf); },
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Broken or unresolvable symbolic link.*dangling_leaf\.db/
+        );
+        assert.equal(instance, null, 'Database constructor must never be reached for dangling symlink');
+      } finally {
+        fs.lstatSync = origLstat;
+        fs.realpathSync = origRealpath;
+        if (createdSymlink) {
+          try { fs.unlinkSync(danglingLeaf); } catch (_) {}
+        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.10): intermediate dangling symlink is rejected without lexical reconstruction and database constructor is never reached', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-inter-dangling-'));
+      const danglingDir = path.join(tempDir, 'dangling_dir');
+      const candidateUnderDangling = path.join(danglingDir, 'future.db');
+      let createdSymlink = false;
+      try {
+        fs.symlinkSync(path.join(tempDir, 'nonexistent_folder'), danglingDir);
+        createdSymlink = true;
+      } catch (_) {}
+
+      const origLstat = fs.lstatSync;
+      const origRealpath = fs.realpathSync;
+      try {
+        if (!createdSymlink) {
+          fs.lstatSync = (p, opts) => {
+            if (typeof p === 'string' && p.includes('dangling_dir') && !p.includes('future.db')) {
+              return { isSymbolicLink: () => true, isDirectory: () => false, isFile: () => false };
+            }
+            if (typeof p === 'string' && p.includes('future.db')) {
+              return undefined;
+            }
+            return origLstat(p, opts);
+          };
+          fs.realpathSync = (p) => {
+            if (typeof p === 'string' && p.includes('dangling_dir')) {
+              const err = new Error('ENOENT: no such file or directory');
+              err.code = 'ENOENT';
+              throw err;
+            }
+            return origRealpath(p);
+          };
+        }
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(candidateUnderDangling),
+          /Broken or unresolvable symbolic link.*dangling_dir/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(candidateUnderDangling),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Broken or unresolvable symbolic link.*dangling_dir/
+        );
+
+        let instance = null;
+        assert.throws(
+          () => { instance = new IndexDB(candidateUnderDangling); },
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Broken or unresolvable symbolic link.*dangling_dir/
+        );
+        assert.equal(instance, null, 'Database constructor must never be reached for intermediate dangling symlink');
+      } finally {
+        fs.lstatSync = origLstat;
+        fs.realpathSync = origRealpath;
+        if (createdSymlink) {
+          try { fs.unlinkSync(danglingDir); } catch (_) {}
+        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.10): intermediate symlink loop throws explicit error and fails closed', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-inter-loop-'));
+      const loopA = path.join(tempDir, 'loopA');
+      const loopB = path.join(tempDir, 'loopB');
+      const candidateUnderLoop = path.join(loopA, 'future.db');
+      let createdSymlinks = false;
+      try {
+        fs.symlinkSync(loopB, loopA);
+        fs.symlinkSync(loopA, loopB);
+        createdSymlinks = true;
+      } catch (_) {}
+
+      const origLstat = fs.lstatSync;
+      const origRealpath = fs.realpathSync;
+      try {
+        if (!createdSymlinks) {
+          fs.lstatSync = (p, opts) => {
+            if (typeof p === 'string' && (p.includes('loopA') || p.includes('loopB'))) {
+              return { isSymbolicLink: () => true, isDirectory: () => false, isFile: () => false };
+            }
+            return origLstat(p, opts);
+          };
+          fs.realpathSync = (p) => {
+            if (typeof p === 'string' && (p.includes('loopA') || p.includes('loopB'))) {
+              const err = new Error('ELOOP: too many levels of symbolic links');
+              err.code = 'ELOOP';
+              throw err;
+            }
+            return origRealpath(p);
+          };
+        }
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(candidateUnderLoop),
+          /ELOOP|too many (levels of )?symbolic links/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(candidateUnderLoop),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*ELOOP/
+        );
+
+        let instance = null;
+        assert.throws(
+          () => { instance = new IndexDB(candidateUnderLoop); },
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*ELOOP/
+        );
+        assert.equal(instance, null, 'Database constructor must never be reached for intermediate loop');
+      } finally {
+        fs.lstatSync = origLstat;
+        fs.realpathSync = origRealpath;
+        if (createdSymlinks) {
+          try { fs.unlinkSync(loopA); } catch (_) {}
+          try { fs.unlinkSync(loopB); } catch (_) {}
+        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.10): inaccessible parent or ancestor directory rejects without opening database', () => {
+      const origLstat = fs.lstatSync;
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-inaccessible-anc-'));
+      const inaccessiblePath = path.join(tempDir, 'sub', 'target.db');
+
+      try {
+        fs.lstatSync = (p, opts) => {
+          if (typeof p === 'string' && p.includes('inaccessible-anc')) {
+            const err = new Error('EACCES: permission denied');
+            err.code = 'EACCES';
+            throw err;
+          }
+          return origLstat(p, opts);
+        };
+
+        assert.throws(
+          () => IndexDB.canonicalizeDbPath(inaccessiblePath),
+          /Inaccessible path component.*inaccessible-anc.*EACCES/
+        );
+
+        assert.throws(
+          () => IndexDB.isDefaultDbPath(inaccessiblePath),
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Inaccessible path component/
+        );
+
+        let instance = null;
+        assert.throws(
+          () => { instance = new IndexDB(inaccessiblePath); },
+          /\[Security Violation\] Canonical path equivalence cannot be established safely.*Inaccessible path component/
+        );
+        assert.equal(instance, null, 'Database constructor must never be reached for inaccessible ancestor');
+      } finally {
+        fs.lstatSync = origLstat;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.10): normal nonexistent target in verified ancestor directory canonicalizes safely and is permitted for isolated database', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-normal-nonexistent-'));
+      const normalTarget = path.join(tempDir, 'future_isolated.db');
+
+      try {
+        const canon = IndexDB.canonicalizeDbPath(normalTarget);
+        assert.ok(canon, 'Must return canonical path for valid nonexistent target');
+        assert.equal(IndexDB.isDefaultDbPath(normalTarget), false, 'Nonexistent isolated target is not default DB');
+
+        const db = new IndexDB(normalTarget);
+        assert.ok(db.db !== null, 'Isolated database must be initialized');
+        assert.equal(fs.existsSync(normalTarget), true, 'Database file must be created on disk');
+        const rows = db.db.prepare('SELECT 100 as num').all();
+        assert.equal(rows[0].num, 100);
+        db.close();
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('SEC-09 regression (Phase 6.10): valid symlink alias resolves to canonical target and correctly enforces guard if target is protected', () => {
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-valid-alias-'));
+      const realDir = path.join(tempDir, 'real');
+      fs.mkdirSync(realDir);
+      const symlinkDir = path.join(tempDir, 'symlink_alias');
+      let createdSymlink = false;
+      try {
+        fs.symlinkSync(realDir, symlinkDir);
+        createdSymlink = true;
+      } catch (_) {}
+
+      try {
+        if (createdSymlink) {
+          const protectedDb = path.join(realDir, 'protected.db');
+          fs.writeFileSync(protectedDb, 'data');
+          const candidateUnderSymlink = path.join(symlinkDir, 'protected.db');
+
+          IndexDB.setProtectedDefaultDbPathForTest(protectedDb);
+
+          assert.equal(
+            IndexDB.isDefaultDbPath(candidateUnderSymlink, protectedDb),
+            true,
+            'Path via valid symlink alias must match protected target'
+          );
+
+          assert.throws(
+            () => new IndexDB(candidateUnderSymlink, { defaultDbPath: protectedDb }),
+            /\[Security Violation\] Direct access to protected default database/
+          );
+
+          const isolatedUnderSymlink = path.join(symlinkDir, 'other_isolated.db');
+          assert.equal(IndexDB.isDefaultDbPath(isolatedUnderSymlink, protectedDb), false);
+          const db = new IndexDB(isolatedUnderSymlink, { defaultDbPath: protectedDb });
+          assert.ok(db.db !== null);
+          db.close();
+        }
+      } finally {
+        IndexDB.clearProtectedDefaultDbPathForTest();
+        if (createdSymlink) {
+          try { fs.unlinkSync(symlinkDir); } catch (_) {}
+        }
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     test('SEC-10 regression 1: child process that exits normally is observed with exit code 0 and terminated cleanly', async () => {
       const tempNormalDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-normal-exit-'));
       const normalScript = path.join(tempNormalDir, 'normal-child.js');

@@ -10,26 +10,81 @@ function isTestEnvironment() {
     process.argv.some(arg => typeof arg === 'string' && (arg.includes('test') || arg === '--test'));
 }
 
-function findExistingAncestor(targetPath) {
-  let current = targetPath;
-  const segments = [];
+function auditPathComponents(resolved) {
+  // Build ancestor chain from filesystem root to resolved path
+  const chain = [];
+  let curr = resolved;
   while (true) {
-    try {
-      if (fs.existsSync(current)) {
-        return { existingAncestor: current, remainingSegments: segments.reverse() };
-      }
-    } catch (e) {
-      const err = new Error(`Inaccessible path segment '${current}': ${e.message}`);
-      err.code = e.code || 'EACCES';
-      throw err;
-    }
-    const parent = path.dirname(current);
-    if (parent === current) {
-      return { existingAncestor: null, remainingSegments: segments.reverse() };
-    }
-    segments.push(path.basename(current));
-    current = parent;
+    chain.unshift(curr);
+    const parent = path.dirname(curr);
+    if (parent === curr) break;
+    curr = parent;
   }
+
+  let lastExistingCanonical = null;
+  let firstMissingIndex = -1;
+
+  for (let i = 0; i < chain.length; i++) {
+    const comp = chain[i];
+    let lst;
+    try {
+      lst = fs.lstatSync(comp, { throwIfNoEntry: false });
+    } catch (err) {
+      const wrapErr = new Error(`Inaccessible path component '${comp}': ${err.message}`);
+      wrapErr.code = err.code || 'EACCES';
+      throw wrapErr;
+    }
+
+    if (lst) {
+      if (firstMissingIndex !== -1) {
+        const stateErr = new Error(`Discontinuous path component '${comp}' after missing parent`);
+        stateErr.code = 'ENOENT';
+        throw stateErr;
+      }
+
+      if (lst.isSymbolicLink()) {
+        try {
+          const real = fs.realpathSync(comp);
+          lastExistingCanonical = real;
+        } catch (symErr) {
+          if (symErr.code === 'ENOENT') {
+            const brokenErr = new Error(`Broken or unresolvable symbolic link for path: '${comp}'`);
+            brokenErr.code = 'ELOOP';
+            throw brokenErr;
+          }
+          throw symErr;
+        }
+      } else {
+        lastExistingCanonical = fs.realpathSync(comp);
+      }
+    } else {
+      if (firstMissingIndex === -1) {
+        firstMissingIndex = i;
+      }
+    }
+  }
+
+  if (!lastExistingCanonical) {
+    const ancestorErr = new Error(`Inaccessible parent directory or ancestor for path: '${resolved}'`);
+    ancestorErr.code = 'ENOENT';
+    throw ancestorErr;
+  }
+
+  const remainingSegments = firstMissingIndex === -1 ? [] : chain.slice(firstMissingIndex).map(c => path.basename(c));
+  const canonicalPath = remainingSegments.length === 0 ? lastExistingCanonical : path.join(lastExistingCanonical, ...remainingSegments);
+  return {
+    canonicalParent: lastExistingCanonical,
+    remainingSegments,
+    canonicalPath
+  };
+}
+
+function findExistingAncestor(targetPath) {
+  const audited = auditPathComponents(targetPath);
+  return {
+    existingAncestor: audited.canonicalParent,
+    remainingSegments: audited.remainingSegments
+  };
 }
 
 function isPathCaseInsensitive(p) {
@@ -126,25 +181,8 @@ function canonicalizeDbPath(p) {
     canonical = fs.realpathSync(resolved);
   } catch (err) {
     if (err.code === 'ENOENT') {
-      try {
-        const lstat = fs.lstatSync(resolved, { throwIfNoEntry: false });
-        if (lstat && lstat.isSymbolicLink()) {
-          const symErr = new Error(`Broken or unresolvable symbolic link for path: '${resolved}'`);
-          symErr.code = 'ELOOP';
-          throw symErr;
-        }
-      } catch (lstatErr) {
-        if (lstatErr.code !== 'ENOENT') throw lstatErr;
-      }
-
-      const { existingAncestor, remainingSegments } = findExistingAncestor(resolved);
-      if (existingAncestor) {
-        canonical = path.join(fs.realpathSync(existingAncestor), ...remainingSegments);
-      } else {
-        const ancestorErr = new Error(`Inaccessible parent directory or ancestor for path: '${resolved}'`);
-        ancestorErr.code = 'ENOENT';
-        throw ancestorErr;
-      }
+      const audited = auditPathComponents(resolved);
+      canonical = audited.canonicalPath;
     } else {
       throw err;
     }
@@ -645,6 +683,7 @@ IndexDB.canonicalizeDbPath = canonicalizeDbPath;
 IndexDB.isDefaultDbPath = isDefaultDbPath;
 IndexDB.isTestEnvironment = isTestEnvironment;
 IndexDB.isPathCaseInsensitive = isPathCaseInsensitive;
+IndexDB.auditPathComponents = auditPathComponents;
 IndexDB.setProtectedDefaultDbPathForTest = setProtectedDefaultDbPathForTest;
 IndexDB.clearProtectedDefaultDbPathForTest = clearProtectedDefaultDbPathForTest;
 

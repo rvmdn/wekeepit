@@ -147,19 +147,22 @@ Audit menyeluruh Tahap 6 hingga Tahap 6.8 (Phase 6.8 — Close Remaining Audit G
      - Penghapusan direktori temporary hanya dilakukan setelah child process dipastikan benar-benar berhenti, dan hasil penghapusan diverifikasi secara tegas (`assert.strictEqual(fs.existsSync(tempDir), false)`) tanpa menelan error cleanup.
 - **Verifikasi Test:** `test/audit-security-and-integrity.test.js` (Subtest Temuan Wajib Phase 6.3 – 6.6: 19 tests passing) dan `test/server-api.test.js` (Subtest isolated child process: 1 test passing).
 
-### SEC-09 — Fail-Closed Path Canonicalization & Filesystem-Aware Case Sensitivity (P1 / Temuan Phase 6.6 – 6.9)
-- **File & Baris:** `indexer/db.js:13-170, 580-605`, `test/audit-security-and-integrity.test.js:1550-1890`.
+### SEC-09 — Fail-Closed Path Canonicalization & Filesystem-Aware Case Sensitivity (P1 / Temuan Phase 6.6 – 6.10)
+- **File & Baris:** `indexer/db.js:13-180, 600-695`, `test/audit-security-and-integrity.test.js:1550-2180`.
 - **Skenario Risiko:**
   1. Perlindungan database default sebelumnya hanya memeriksa argumen eksplisit di konstruktor. Jika `dbPath` `undefined` atau `null`, modul langsung mengonsumsi `process.env.INDEX_DB_PATH` tanpa validasi setara, sehingga variabel lingkungan yang mengarah ke database default dapat melewati guard.
   2. Implementasi `realpathSync` sebelumnya menelan error secara diam-diam dengan `catch (_) {}`. Jika terjadi permission error (EACCES/EPERM), symlink loop (ELOOP), broken symlink, atau direktori induk tidak dapat diakses, kegagalan tersebut berisiko membuka akses ke path default yang dilindungi karena kesetaraan kanonikal tidak terverifikasi.
   3. Pada `isDefaultDbPath()`, jika canonicalization target yang dilindungi (`DEFAULT_DB_PATH` atau injected protected default) gagal, implementasi sebelumnya memiliki fallback leksikal unsafe: `catch (_) { def = path.normalize(path.resolve(target)); ... }`. Hal ini berisiko menyebabkan kegagalan kanonikalisasi target menjadi non-match sehingga membuka database yang seharusnya dilindungi.
   4. Pengujian casing sebelumnya menyimpulkan sensitivitas huruf semata-mata dari `process.platform === 'darwin'`, dan probe sebelumnya menelan error dengan `catch (_) { return false; }` yang menyamakan probe gagal dengan konfirmasi filesystem case-sensitive.
-- **Perbaikan (Phase 6.8 & Phase 6.9):**
-  1. **Fail-Closed Canonicalization:** Fungsi `canonicalizeDbPath(p)` tidak lagi menelan error `realpathSync`. Bila terjadi `EACCES`, `EPERM`, `ELOOP`, atau broken symlink, error dilempar keluar secara eksplisit. Untuk target yang belum ada, fungsi mencari ancestor direktori yang valid; jika ancestor tidak ditemukan (misal drive nonexistent di Windows), error `Inaccessible parent directory or ancestor` dilempar secara tegas.
-  2. **Fail-Closed Protected Target Guard (Zero Unsafe Fallback):** Pada `isDefaultDbPath()`, seluruh fallback leksikal pada target yang dilindungi dihilangkan total. Jika kanonikalisasi candidate ATAU target yang dilindungi (`DEFAULT_DB_PATH` produksi maupun path terinjeksi pengujian) mengalami kegagalan, guard langsung melempar error `[Security Violation] Canonical path equivalence cannot be established safely`, menolak pembukaan database sebelum konstruktor database internal disentuh.
-  3. **Filesystem-Aware Case Sensitivity Probe:** Ditambahkan probe `isPathCaseInsensitive(p)` yang memverifikasi kesamaan inode (`ino`) dan device (`dev`) pada variasi nama direktori riil di disk, tanpa asumsi platform semata-mata dari `process.platform`. Probe mengembalikan `true` jika terkonfirmasi case-insensitive, `false` jika terkonfirmasi case-sensitive (misal variasi casing menghasilkan `ENOENT` atau `ino` berbeda), dan melempar error eksplisit jika probe gagal (misal `EACCES` atau error pembacaan path). Probe yang gagal tidak dapat secara diam-diam mengotorisasi database yang dilindungi.
-  4. **Preservasi Akses Normal:** Akses ke database terisolasi yang valid (file baru di direktori yang ada) dan `:memory:` tetap berfungsi normal tanpa hambatan. Perlindungan produksi `DEFAULT_DB_PATH` tetap aktif penuh meskipun terdapat path terinjeksi pengujian.
-- **Verifikasi Test:** 20 tes regresi SEC-09 lulus 100% (env var bypass, undefined/null, variasi separator/dot/casing, permission errors, symlink cycle/loops, broken symlinks, inaccessible ancestors, valid temp DB, `:memory:`, dynamic probe, protected-target fail-closed, injected-target fail-closed, candidate fail-closed, probe failure guard, case variants rejection, distinct case-sensitive paths, dan production guard coexistence).
+  5. Audit lanjutan menemukan bahwa ketika `realpathSync()` menghasilkan `ENOENT` untuk target yang belum ada, pemeriksaan symlink hanya menguji komponen akhir (`lstatSync(resolved)`). Symlink perantara (*intermediate symlink*) yang rusak atau looping dilewati karena `existsSync()` menghasilkan `false`, sehingga path direkonstruksi secara leksikal dari grandparent tanpa validasi komponen perantara.
+- **Perbaikan (Phase 6.8, Phase 6.9, & Phase 6.10):**
+  1. **Full Path Component-by-Component Audit (`auditPathComponents`):** Mengaudit seluruh komponen dari filesystem root hingga target leaf menggunakan `fs.lstatSync(comp, { throwIfNoEntry: false })`. Tidak pernah menganggap `existsSync() === false` sebagai bukti ketiadaan berkas.
+  2. **Deteksi Eksplisit Dangling Symlink & Symlink Loop Perantara:** Setiap symlink pada komponen perantara maupun leaf divalidasi dengan `fs.realpathSync()`. Jika terjadi `ENOENT` pada symlink (dangling symlink), langsung dilempar error `Broken or unresolvable symbolic link`. Jika terjadi `ELOOP`, error symlink loop dilempar tegas dan fail-closed.
+  3. **Rekonstruksi Aman Hanya untuk Target yang Terverifikasi:** Rekonstruksi path untuk target yang belum ada hanya diizinkan jika seluruh direktori ancestor telah terverifikasi aman, ada di disk, dan bukan dangling symlink.
+  4. **Fail-Closed Protected Target Guard (Zero Unsafe Fallback):** Pada `isDefaultDbPath()`, seluruh fallback leksikal pada target yang dilindungi dihilangkan total. Jika kanonikalisasi candidate ATAU target yang dilindungi (`DEFAULT_DB_PATH` produksi maupun path terinjeksi pengujian) mengalami kegagalan, guard langsung melempar error `[Security Violation] Canonical path equivalence cannot be established safely`, menolak pembukaan database sebelum konstruktor database internal disentuh.
+  5. **Filesystem-Aware Case Sensitivity Probe:** Ditambahkan probe `isPathCaseInsensitive(p)` yang memverifikasi kesamaan inode (`ino`) dan device (`dev`) pada variasi nama direktori riil di disk, tanpa asumsi platform semata-mata dari `process.platform`. Probe mengembalikan `true` jika terkonfirmasi case-insensitive, `false` jika terkonfirmasi case-sensitive, dan melempar error eksplisit jika probe gagal.
+  6. **Preservasi Akses Normal:** Akses ke database terisolasi yang valid (file baru di direktori yang ada), alias symlink valid, dan `:memory:` tetap berfungsi normal tanpa hambatan. Perlindungan produksi `DEFAULT_DB_PATH` tetap aktif penuh meskipun terdapat path terinjeksi pengujian.
+- **Verifikasi Test:** 26 tes regresi SEC-09 lulus 100% (env var bypass, undefined/null, variasi separator/dot/casing, permission errors, symlink cycle/loops, broken symlinks leaf & intermediate, intermediate symlink loops, inaccessible ancestors, valid temp DB, valid symlink aliases, `:memory:`, dynamic probe, protected-target fail-closed, injected-target fail-closed, candidate fail-closed, probe failure guard, case variants rejection, distinct case-sensitive paths, dan production guard coexistence).
 
 ### SEC-10 — Removal of Swallowed Termination Errors & Evidence Preservation (P2 / Temuan Phase 6.6 – 6.8)
 - **File & Baris:** `test/audit-security-and-integrity.test.js:9-140, 1612-1755`, `test/server-api.test.js:80-245`.
@@ -297,14 +300,14 @@ Pengujian terhadap 100% fitur WeKeepIt V1 berjalan lancar:
 
 ## 7. Definition of Done (DoD) Checklist
 
-- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 153/153 tests passed across 34 suites (100% passing, exit code 0).
-- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, zero-touch database isolation, child process termination lifecycle, post-suite teardown integrity verification, actual guarded sandbox path exercise, fail-closed path canonicalization (zero lexical fallback), filesystem-aware case sensitivity probe, shutdown error propagation, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
+- [x] **1. `npm test` dijalankan dan hasil aktual dicatat:** 159/159 tests passed across 34 suites (100% passing, exit code 0).
+- [x] **2. Seluruh area utama diaudit:** Security, actual socket network binding, CORS/Origin policy, file launch boundaries, zero-touch database isolation, child process termination lifecycle, post-suite teardown integrity verification, actual guarded sandbox path exercise, fail-closed path canonicalization (zero lexical fallback), filesystem-aware case sensitivity probe, intermediate & leaf symlink closure, shutdown error propagation, search accuracy, parsers, folder reconciliation, SQLite integrity, V1 regression, dan benchmark performa.
 - [x] **3. Temuan memiliki severity, bukti, dan langkah reproduksi:** Terdokumentasi lengkap pada laporan ini.
 - [x] **4. Semua P0, P1, dan P2 yang dapat direproduksi sudah diperbaiki:** SEC-01, SEC-02, SEC-03, SEC-05, SEC-06, SEC-07, SEC-08, SEC-09, SEC-10, SEC-11, SEC-12, SRCH-01, COLL-01, SQL-01, DOCS-01, SEC-04 selesai diperbaiki menyeluruh dan terbukti via tes otomatis.
-- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-security-and-integrity.test.js` dan `test/server-api.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, Phase 6.2, Phase 6.3, Phase 6.5, Phase 6.6, Phase 6.7, Phase 6.8, dan Phase 6.9 (total 153 tests, progresi: 135 $\rightarrow$ 140 $\rightarrow$ 145 $\rightarrow$ 153).
-- [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable (153/153 pass).
+- [x] **5. Tes baru ditambahkan untuk setiap bug yang diperbaiki:** Suite `test/audit-security-and-integrity.test.js` dan `test/server-api.test.js` diperluas mencakup 100% regresi Phase 6, Phase 6.1, Phase 6.2, Phase 6.3, Phase 6.5, Phase 6.6, Phase 6.7, Phase 6.8, Phase 6.9, dan Phase 6.10 (total 159 tests, progresi: 135 $\rightarrow$ 140 $\rightarrow$ 145 $\rightarrow$ 153 $\rightarrow$ 159).
+- [x] **6. Seluruh test suite dijalankan kembali:** 100% test lulus tanpa ada test yang di-skip atau di-disable (159/159 pass).
 - [x] **7. Data V1, database default, dan dokumen sumber tidak mengalami perubahan:** `wekeepit-data.json` dan `wekeepit-index.db` utuh (0 bytes altered by test suite, zero-touch verified).
-- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi Phase 6.9 (fail-closed protected target canonicalization, removal of unsafe lexical fallback, explicit filesystem case probe error surfacing, teardown integrity verification, dan preservasi bukti).
+- [x] **8. Dokumen `docs/V2-ACCEPTANCE-AUDIT.md` diperbarui:** Selesai diperbarui dengan temuan dan mitigasi Phase 6.10 (full path component audit, intermediate & leaf dangling symlink rejection, symlink loop rejection, teardown integrity verification, dan preservasi bukti).
 - [x] **9. Bebas klaim tanpa bukti:** Seluruh angka benchmark dan temuan diverifikasi secara empiris di mesin eksekusi lokal dan hasil aktual dicatat transparan.
 
 ---
@@ -322,14 +325,14 @@ $env:INDEX_DB_PATH = $null; npm test
 - **Exit Code:** `0`
 - **Hasil Ringkasan TAP:**
   ```text
-  # tests 153
+  # tests 159
   # suites 34
-  # pass 153
+  # pass 159
   # fail 0
   # cancelled 0
   # skipped 0
   # todo 0
-  # duration_ms 7233.823
+  # duration_ms 6792.2016
   ```
 
 #### 2. Audit Keamanan & Isolasi Database (`test/audit-security-and-integrity.test.js`)
@@ -339,14 +342,14 @@ $env:INDEX_DB_PATH = $null; node --test test/audit-security-and-integrity.test.j
 - **Exit Code:** `0`
 - **Hasil Ringkasan TAP:**
   ```text
-  # tests 86
+  # tests 92
   # suites 9
-  # pass 86
+  # pass 92
   # fail 0
   # cancelled 0
   # skipped 0
   # todo 0
-  # duration_ms 7369.7784
+  # duration_ms 6780.8585
   ```
 
 #### 3. Integrasi Server API (`test/server-api.test.js`)
@@ -363,7 +366,7 @@ $env:INDEX_DB_PATH = $null; node --test test/server-api.test.js
   # cancelled 0
   # skipped 0
   # todo 0
-  # duration_ms 200.5683
+  # duration_ms 186.4741
   ```
 
 #### 4. Audit Akurasi Search & Parsers (`test/audit-search-and-parsers.test.js`)
@@ -380,7 +383,7 @@ $env:INDEX_DB_PATH = $null; node --test test/audit-search-and-parsers.test.js
   # cancelled 0
   # skipped 0
   # todo 0
-  # duration_ms 108.9271
+  # duration_ms 111.8906
   ```
 
 #### 5. Regresi Fitur V1 (`test/v1-regression.test.js`)
@@ -397,7 +400,7 @@ $env:INDEX_DB_PATH = $null; node --test test/v1-regression.test.js
   # cancelled 0
   # skipped 0
   # todo 0
-  # duration_ms 67.7644
+  # duration_ms 70.1666
   ```
 
 #### 6. Verifikasi Zero-Touch Snapshot Root Repository Database
