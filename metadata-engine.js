@@ -33,10 +33,9 @@ class MetadataEngine {
       return this.schema.tagPalette[cleanTag];
     }
     // Deterministic pleasant color generation for unknown tags
-    const palette = [
-      '#6366f1', '#06b6d4', '#10b981', '#f59e0b',
-      '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f97316'
-    ];
+    const palette = (Array.isArray(this.schema.defaultTagPalette) && this.schema.defaultTagPalette.length > 0)
+      ? this.schema.defaultTagPalette
+      : ['#6366f1', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#3b82f6', '#14b8a6', '#f97316'];
     let hash = 0;
     for (let i = 0; i < cleanTag.length; i++) {
       hash = cleanTag.charCodeAt(i) + ((hash << 5) - hash);
@@ -136,7 +135,9 @@ class MetadataEngine {
     let metadataCorpus = '';
     if (card.metadata && typeof card.metadata === 'object') {
       for (const [k, v] of Object.entries(card.metadata)) {
-        metadataCorpus += ` ${k} ${String(v)}`.toLowerCase();
+        const fieldDef = this.getFieldDefinition(k);
+        const fieldLabel = fieldDef && fieldDef.label ? ` ${fieldDef.label}` : '';
+        metadataCorpus += ` ${k}${fieldLabel} ${String(v)}`.toLowerCase();
       }
     }
 

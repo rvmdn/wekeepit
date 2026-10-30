@@ -1,6 +1,6 @@
 {
   "name": "wekeepit",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Portable Card Notepad, Notice Board & Document Vault with Full-Text Search (PDF, Word, Excel)",
   "main": "server.js",
   "scripts": {
@@ -21,6 +21,6 @@
   "author": "Antigravity",
   "license": "MIT",
   "dependencies": {
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^11.8.1"
   }
 }

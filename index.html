@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WeKeepIt v2.0 - Personal Work Board & Document Search</title>
+  <title>WeKeepIt v2.1.0 - Personal Work Board & Document Explorer</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📌</text></svg>">
 </head>
@@ -15,7 +15,7 @@
         <div class="logo-group">
           <span class="logo-icon">📌</span>
           <h1 class="logo-text">WeKeepIt</h1>
-          <span class="version-tag">v2.0</span>
+          <span class="version-tag">v2.1</span>
         </div>
       </div>
 
@@ -117,9 +117,11 @@
       </div>
 
       <div class="view-density-toggle" id="viewDensityToggle">
-        <button class="density-btn active" data-density="normal">Grid</button>
-        <button class="density-btn" data-density="compact">Kompak</button>
+        <button class="density-btn active" data-density="normal" title="Tampilan Grid Rapi">Grid</button>
+        <button class="density-btn" data-density="compact" title="Tampilan Kompak">Kompak</button>
+        <button class="density-btn free-mode-btn" data-density="free" id="freeModeBtn" title="Mode Kanvas Bebas (Bisa diacak dan digeser)">🖐️ Bebas</button>
       </div>
+      <button id="tidyUpBtn" class="btn btn-secondary tidy-up-btn" style="display: none;" title="Rapikan kartu yang berserakan kembali ke posisi rapi">🧹 Rapikan</button>
     </nav>
 
     <!-- Clean Quick Tag Bar (Auto-hides if no tags) -->
@@ -227,30 +229,80 @@
           </div>
         </div>
 
-        <!-- Indexed Documents Table -->
-        <div class="indexed-files-section">
-          <div class="section-header-compact">
-            <h3>📑 Berkas yang Telah Terindeks</h3>
-            <span class="badge-tag" id="indexedFilesBadge">0 berkas</span>
+        <!-- Indexed Documents File Explorer (Detail, Tree, Card) -->
+        <div class="indexed-files-section file-explorer-section">
+          <div class="explorer-toolbar">
+            <div class="explorer-toolbar-left">
+              <h3 style="margin: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem;">
+                <span>📁</span> Penjelajah Berkas Dokumen
+              </h3>
+              <span class="badge-tag" id="indexedFilesBadge">0 berkas</span>
+            </div>
+
+            <div class="explorer-toolbar-right">
+              <!-- Search filter input in explorer -->
+              <div class="explorer-search-box">
+                <span class="explorer-search-icon">🔍</span>
+                <input type="text" id="explorerSearchInput" placeholder="Saring nama berkas atau folder..." />
+                <button type="button" id="explorerClearSearchBtn" style="display: none;">✕</button>
+              </div>
+
+              <!-- View Mode Toggles: Detail, Tree, Card -->
+              <div class="explorer-view-toggles" id="explorerViewToggles">
+                <button type="button" class="explorer-mode-btn active" data-mode="detail" title="Tampilan Daftar Detail">
+                  <span>📑</span> Detail
+                </button>
+                <button type="button" class="explorer-mode-btn" data-mode="tree" title="Tampilan Struktur Hirarki Folder (Tree)">
+                  <span>🌳</span> Tree
+                </button>
+                <button type="button" class="explorer-mode-btn" data-mode="card" title="Tampilan Kartu / Grid Visual">
+                  <span>🗂️</span> Card
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="table-container">
-            <table class="indexed-files-table">
-              <thead>
-                <tr>
-                  <th>Nama Berkas</th>
-                  <th>Tipe</th>
-                  <th>Ukuran</th>
-                  <th>Unit Teks</th>
-                  <th>Status</th>
-                  <th>Aksi</th>
-                </tr>
-              </thead>
-              <tbody id="indexedFilesTableBody">
-                <tr>
-                  <td colspan="6" class="table-empty-cell">Belum ada dokumen yang selesai diindeks.</td>
-                </tr>
-              </tbody>
-            </table>
+
+          <!-- Breadcrumb Path Bar -->
+          <div class="explorer-breadcrumb-bar" id="explorerBreadcrumbBar">
+            <span class="breadcrumb-item active" data-path="ROOT">Semua Dokumen</span>
+          </div>
+
+          <!-- Explorer Views Container -->
+          <div class="explorer-views-container">
+            <!-- 1. Detail View (Table) -->
+            <div id="explorerDetailView" class="explorer-view-pane active">
+              <div class="table-container">
+                <table class="indexed-files-table">
+                  <thead>
+                    <tr>
+                      <th data-sort="name" class="sortable">Nama Berkas ⇅</th>
+                      <th data-sort="type" class="sortable">Tipe ⇅</th>
+                      <th data-sort="size" class="sortable">Ukuran ⇅</th>
+                      <th data-sort="chunks" class="sortable">Unit Teks ⇅</th>
+                      <th>Status</th>
+                      <th>Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="indexedFilesTableBody">
+                    <tr>
+                      <td colspan="6" class="table-empty-cell">Belum ada dokumen yang selesai diindeks.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 2. Tree View (Directory Hierarchy) -->
+            <div id="explorerTreeView" class="explorer-view-pane" style="display: none;">
+              <div class="tree-container" id="treeContainer">
+                <div class="tree-empty-notice">Memuat hierarki folder...</div>
+              </div>
+            </div>
+
+            <!-- 3. Card / Grid View -->
+            <div id="explorerCardView" class="explorer-view-pane" style="display: none;">
+              <div class="doc-cards-grid" id="docCardsGrid"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -601,7 +653,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px;">
             <div>
               <h4 style="margin: 0 0 4px 0;">🔄 Pembaruan Aplikasi</h4>
-              <p style="margin: 0; font-size: 12px; color: var(--text-muted);">Versi aktif: <strong id="currentAppVersion">v2.0.0</strong></p>
+              <p style="margin: 0; font-size: 12px; color: var(--text-muted);">Versi aktif: <strong id="currentAppVersion">v2.1.0</strong></p>
             </div>
             <button id="checkUpdateBtn" class="btn btn-secondary" style="font-size: 12px; padding: 6px 14px; white-space: nowrap;">Periksa Pembaruan</button>
           </div>

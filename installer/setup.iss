@@ -2,7 +2,7 @@
 ; Generates a clean, modern Windows Installer: WeKeepIt-v2.0.0-Setup.exe
 
 #define MyAppName "WeKeepIt"
-#define MyAppVersion "2.0.0"
+#define MyAppVersion "2.1.0"
 #define MyAppPublisher "Antigravity"
 #define MyAppURL "https://github.com/rvmdn/wekeepit"
 #define MyAppExeName "WeKeepIt.exe"

@@ -8,7 +8,20 @@
   // State
   let cards = [];
   let currentTab = 'all'; // 'all', 'pinned', 'reminders', 'checklist'
-  let currentDensity = 'normal'; // 'normal', 'compact'
+  let currentDensity = 'normal'; // 'normal', 'compact', 'free'
+  // Free Canvas Mode State & Card Positions (Posisi bebas & acak)
+  let cardPositions = {};
+  try {
+    const savedPos = localStorage.getItem('wekeepit_canvas_positions');
+    if (savedPos) cardPositions = JSON.parse(savedPos);
+  } catch (e) { cardPositions = {}; }
+
+  function saveCardPositions() {
+    localStorage.setItem('wekeepit_canvas_positions', JSON.stringify(cardPositions));
+  }
+
+  let highestZIndex = 20;
+
   let searchQuery = '';
   let isServerAvailable = false;
   let activeAlertCard = null;
@@ -21,6 +34,14 @@
   let searchDebounceTimer = null;
   let foldersList = [];
   let indexedDocsList = [];
+
+  // --- FILE EXPLORER STATE (Detail, Tree, Card) ---
+  let explorerViewMode = 'detail'; // 'detail', 'tree', 'card'
+  let explorerSearchQuery = '';
+  let explorerSortKey = 'name'; // 'name', 'type', 'size', 'chunks'
+  let explorerSortAsc = true;
+  let explorerCurrentPath = '';
+
   let statusPollTimer = null;
 
   // Instances
@@ -34,6 +55,7 @@
   // DOM Elements
   const searchInput = document.getElementById('searchInput');
   const clearSearchBtn = document.getElementById('clearSearchBtn');
+  const tidyUpBtn = document.getElementById('tidyUpBtn');
   const tagChipsContainer = document.getElementById('tagChipsContainer');
   const cardsGrid = document.getElementById('cardsGrid');
   const pinnedGrid = document.getElementById('pinnedGrid');
@@ -156,10 +178,30 @@
   let selectedColor = '#6366f1';
 
   // --- SERVER & API HELPERS ---
-  const API_BASE = (window.location.origin && window.location.origin.includes(':4321')) ? '' : 'http://127.0.0.1:4321';
+  const API_BASE = (window.location.protocol.startsWith('http') && window.location.hostname !== 'wekeepit.local')
+    ? window.location.origin
+    : 'http://127.0.0.1:4321';
 
   function apiUrl(endpoint) {
     return API_BASE + endpoint;
+  }
+
+  // --- DYNAMIC METADATA LABELS HELPER ---
+  function updateMetadataLabels() {
+    const schema = metaEngine.getSchema();
+    const fields = schema && Array.isArray(schema.fields) ? schema.fields : [];
+    const fieldNames = fields.map(f => f.label || f.key).filter(Boolean);
+    const suffix = fieldNames.length > 0 ? ` (${fieldNames.slice(0, 3).join(', ')}${fieldNames.length > 3 ? '...' : ''})` : '';
+
+    const collapsibleTitle = document.querySelector('#toggleMetadataFields span');
+    if (collapsibleTitle) {
+      collapsibleTitle.textContent = `🔗 Metadata Kustom${suffix}`;
+    }
+
+    const linkOption = document.querySelector('#cardTypeSelect option[value="link"]');
+    if (linkOption) {
+      linkOption.textContent = `🔗 Metadata & Akses${suffix}`;
+    }
   }
 
   // --- INITIALIZATION ---
@@ -352,6 +394,7 @@
           const schema = await res.json();
           metaEngine.setSchema(schema);
           localStorage.setItem('wekeepit_schema_backup', JSON.stringify(schema));
+          updateMetadataLabels();
           return;
         }
       } catch (err) {}
@@ -513,21 +556,86 @@
       });
     });
 
-    // Density toggle
+
+    // File Explorer View Mode Buttons
+    document.querySelectorAll('.explorer-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.explorer-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        explorerViewMode = btn.getAttribute('data-mode');
+        switchExplorerView(explorerViewMode);
+      });
+    });
+
+    // File Explorer Search Filter
+    const explorerSearchInput = document.getElementById('explorerSearchInput');
+    const explorerClearSearchBtn = document.getElementById('explorerClearSearchBtn');
+    if (explorerSearchInput) {
+      explorerSearchInput.addEventListener('input', (e) => {
+        explorerSearchQuery = e.target.value.trim().toLowerCase();
+        if (explorerClearSearchBtn) {
+          explorerClearSearchBtn.style.display = explorerSearchQuery ? 'block' : 'none';
+        }
+        renderFileExplorer();
+      });
+    }
+
+    if (explorerClearSearchBtn) {
+      explorerClearSearchBtn.addEventListener('click', () => {
+        if (explorerSearchInput) explorerSearchInput.value = '';
+        explorerSearchQuery = '';
+        explorerClearSearchBtn.style.display = 'none';
+        renderFileExplorer();
+      });
+    }
+
+    // Table Header Sorting
+    document.querySelectorAll('.indexed-files-table th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.getAttribute('data-sort');
+        if (explorerSortKey === key) {
+          explorerSortAsc = !explorerSortAsc;
+        } else {
+          explorerSortKey = key;
+          explorerSortAsc = true;
+        }
+        renderFileExplorer();
+      });
+    });
+
+    // Density & Free Canvas Toggle
     document.querySelectorAll('.density-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.density-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        const prevDensity = currentDensity;
         currentDensity = btn.getAttribute('data-density');
-        if (currentDensity === 'compact') {
-          cardsGrid.classList.add('compact');
-          pinnedGrid.classList.add('compact');
-        } else {
+
+        if (currentDensity === 'free') {
           cardsGrid.classList.remove('compact');
           pinnedGrid.classList.remove('compact');
+          cardsGrid.classList.add('free-canvas');
+          pinnedGrid.classList.add('free-canvas');
+          if (tidyUpBtn) tidyUpBtn.style.display = 'inline-flex';
+        } else if (currentDensity === 'compact') {
+          cardsGrid.classList.remove('free-canvas');
+          pinnedGrid.classList.remove('free-canvas');
+          cardsGrid.classList.add('compact');
+          pinnedGrid.classList.add('compact');
+          if (tidyUpBtn) tidyUpBtn.style.display = 'none';
+        } else {
+          cardsGrid.classList.remove('free-canvas', 'compact');
+          pinnedGrid.classList.remove('free-canvas', 'compact');
+          if (tidyUpBtn) tidyUpBtn.style.display = 'none';
         }
+
+        renderAll();
       });
     });
+
+    if (tidyUpBtn) {
+      tidyUpBtn.addEventListener('click', tidyUpCanvasCards);
+    }
 
     // Theme & Appearance Manager
     const THEMES = [
@@ -715,7 +823,7 @@
           }
           const data = await res.json();
           const latestTag = (data.tag_name || data.name || '').trim();
-          const currentVersion = 'v2.0.0';
+          const currentVersion = (document.getElementById('currentAppVersion')?.textContent.trim()) || 'v2.1.0';
 
           if (latestTag && latestTag !== currentVersion) {
             const installerAsset = data.assets?.find(a => typeof a.name === 'string' && a.name.endsWith('-Setup.exe'));
@@ -797,6 +905,14 @@
     }
     if (copyDocTextBtn) copyDocTextBtn.addEventListener('click', copyActiveViewerDocText);
     if (downloadDocFileBtn) downloadDocFileBtn.addEventListener('click', downloadActiveViewerDocFile);
+
+    // Dynamic auto-grow for formContent editor
+    if (formContent) {
+      formContent.addEventListener('input', () => {
+        formContent.style.height = 'auto';
+        formContent.style.height = Math.max(90, formContent.scrollHeight) + 'px';
+      });
+    }
 
     // Color swatches selection
     colorPickerPalette.querySelectorAll('.color-swatch').forEach(swatch => {
@@ -1061,7 +1177,7 @@
               const docsRes = await fetch(apiUrl('/api/documents?_t=') + Date.now());
               if (docsRes.ok) {
                 indexedDocsList = await docsRes.json();
-                renderIndexedDocsTable();
+                renderFileExplorer();
               }
             }
           }
@@ -1676,22 +1792,232 @@
 
   function renderCardList(container, cardItems) {
     container.innerHTML = '';
-    cardItems.forEach(card => {
+    const isFree = currentDensity === 'free';
+    
+    if (isFree) {
+      container.classList.add('free-canvas');
+    } else {
+      container.classList.remove('free-canvas');
+    }
+
+    cardItems.forEach((card, index) => {
       const cardEl = createCardElement(card);
       container.appendChild(cardEl);
+
+      if (isFree) {
+        setupFreeCardPosition(cardEl, card, index, container);
+        attachCardDrag(cardEl, card, container);
+      } else {
+        cardEl.style.position = '';
+        cardEl.style.left = '';
+        cardEl.style.top = '';
+        cardEl.style.zIndex = '';
+        cardEl.style.transform = '';
+      }
     });
+
+    if (isFree) {
+      adjustFreeContainerHeight(container);
+    } else {
+      container.style.minHeight = '';
+    }
   }
+
+  function setupFreeCardPosition(cardEl, card, index, container) {
+    const cardId = card.id || String(index);
+    let pos = cardPositions[cardId];
+
+    if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') {
+      // Default initial layout: scatter nicely in a staggered grid
+      const colWidth = 310;
+      const rowHeight = 220;
+      const containerWidth = Math.max(640, container.clientWidth || 900);
+      const cols = Math.max(1, Math.floor(containerWidth / colWidth));
+      
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      
+      // Slight natural random tilt & jitter for the "acak" board feel
+      const jitterX = Math.round((Math.sin(index * 3.7) * 16));
+      const jitterY = Math.round((Math.cos(index * 2.3) * 14));
+      const rotation = Number((Math.sin(index * 5.1) * 3).toFixed(1)); // between -3deg and +3deg
+
+      pos = {
+        x: Math.max(12, col * colWidth + 16 + jitterX),
+        y: Math.max(12, row * rowHeight + 16 + jitterY),
+        rot: rotation,
+        z: index + 1
+      };
+      cardPositions[cardId] = pos;
+    }
+
+    cardEl.style.position = 'absolute';
+    cardEl.style.left = `${pos.x}px`;
+    cardEl.style.top = `${pos.y}px`;
+    cardEl.style.zIndex = pos.z || 1;
+    cardEl.style.transform = pos.rot ? `rotate(${pos.rot}deg)` : 'none';
+  }
+
+  function adjustFreeContainerHeight(container) {
+    let maxBottom = 400;
+    const cardsInContainer = container.querySelectorAll('.card');
+    cardsInContainer.forEach(el => {
+      const top = parseFloat(el.style.top) || 0;
+      const height = el.offsetHeight || 200;
+      if (top + height + 60 > maxBottom) {
+        maxBottom = top + height + 60;
+      }
+    });
+    container.style.minHeight = `${maxBottom}px`;
+  }
+
+  function attachCardDrag(cardEl, card, container) {
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let origLeft = 0, origTop = 0;
+    let hasMoved = false;
+
+    const onPointerDown = (e) => {
+      // Only drag via left mouse or single touch
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      
+      // Don't drag if clicking buttons, inputs, links, or checklists
+      const interactive = e.target.closest('button, a, input, textarea, select, .checkbox-label, .card-tag-pill');
+      if (interactive) return;
+
+      isDragging = true;
+      hasMoved = false;
+      cardEl.setPointerCapture(e.pointerId);
+
+      highestZIndex += 1;
+      cardEl.style.zIndex = highestZIndex;
+      cardEl.classList.add('is-dragging');
+
+      startX = e.clientX;
+      startY = e.clientY;
+      origLeft = parseFloat(cardEl.style.left) || 0;
+      origTop = parseFloat(cardEl.style.top) || 0;
+
+      e.preventDefault();
+    };
+
+    const onPointerMove = (e) => {
+      if (!isDragging) return;
+
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      if (!hasMoved && (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3)) {
+        hasMoved = true;
+      }
+
+      if (hasMoved) {
+        const newLeft = Math.max(0, origLeft + deltaX);
+        const newTop = Math.max(0, origTop + deltaY);
+
+        cardEl.style.left = `${newLeft}px`;
+        cardEl.style.top = `${newTop}px`;
+      }
+    };
+
+    const onPointerUp = (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      cardEl.classList.remove('is-dragging');
+      try { cardEl.releasePointerCapture(e.pointerId); } catch (err) {}
+
+      if (hasMoved) {
+        const finalLeft = parseFloat(cardEl.style.left) || 0;
+        const finalTop = parseFloat(cardEl.style.top) || 0;
+        const cardId = card.id;
+
+        if (!cardPositions[cardId]) cardPositions[cardId] = {};
+        cardPositions[cardId].x = finalLeft;
+        cardPositions[cardId].y = finalTop;
+        cardPositions[cardId].z = highestZIndex;
+
+        saveCardPositions();
+        adjustFreeContainerHeight(container);
+      }
+    };
+
+    cardEl.addEventListener('pointerdown', onPointerDown);
+    cardEl.addEventListener('pointermove', onPointerMove);
+    cardEl.addEventListener('pointerup', onPointerUp);
+    cardEl.addEventListener('pointercancel', onPointerUp);
+  }
+
+  function tidyUpCanvasCards() {
+    if (currentDensity !== 'free') return;
+
+    const grids = [pinnedGrid, cardsGrid];
+    
+    grids.forEach(grid => {
+      const cardEls = Array.from(grid.querySelectorAll('.card'));
+      if (cardEls.length === 0) return;
+
+      const colWidth = 310;
+      const rowGap = 20;
+      const containerWidth = Math.max(640, grid.clientWidth || 900);
+      const cols = Math.max(1, Math.floor(containerWidth / colWidth));
+
+      // Calculate smooth dynamic masonry-like positions
+      const colHeights = new Array(cols).fill(16);
+
+      cardEls.forEach((el, index) => {
+        // Find column with least height
+        let bestCol = 0;
+        for (let c = 1; c < cols; c++) {
+          if (colHeights[c] < colHeights[bestCol]) {
+            bestCol = c;
+          }
+        }
+
+        const targetX = bestCol * colWidth + 16;
+        const targetY = colHeights[bestCol];
+        const cardHeight = el.offsetHeight || 180;
+
+        colHeights[bestCol] += cardHeight + rowGap;
+
+        // Apply smooth CSS transition
+        el.classList.add('is-tidying');
+        el.style.left = `${targetX}px`;
+        el.style.top = `${targetY}px`;
+        el.style.transform = 'rotate(0deg)';
+
+        const cardId = el.getAttribute('data-id') || String(index);
+        cardPositions[cardId] = {
+          x: targetX,
+          y: targetY,
+          rot: 0,
+          z: index + 1
+        };
+
+        setTimeout(() => {
+          el.classList.remove('is-tidying');
+        }, 600);
+      });
+
+      saveCardPositions();
+      adjustFreeContainerHeight(grid);
+    });
+
+    alertToast('Kartu berhasil dirapikan!');
+  }
+
 
   function createCardElement(card) {
     const cardEl = document.createElement('div');
     cardEl.className = `card ${card.pinned ? 'pinned' : ''}`;
+    cardEl.setAttribute('data-id', card.id || '');
     cardEl.style.setProperty('--card-color', card.color || '#6366f1');
 
     // Header
     const headerEl = document.createElement('div');
     headerEl.className = 'card-header';
     headerEl.innerHTML = `
-      <div class="card-title-group">
+      <div class="card-title-group" style="display: flex; align-items: center;">
+        <span class="card-drag-indicator" title="Geser kartu">⠿</span>
         <h3 class="card-title">${escapeHtml(card.title || 'Tanpa Judul')}</h3>
       </div>
       <div class="card-actions">
@@ -1812,12 +2138,15 @@
       valEl.className = 'metadata-val';
 
       if (type === 'url' || String(val).startsWith('http://') || String(val).startsWith('https://')) {
+        const actionLabel = (fieldDef && fieldDef.actionLabel)
+          ? escapeHtml(fieldDef.actionLabel)
+          : `Buka ${escapeHtml(label.replace(/\s*\/.*$/, ''))}`;
         valEl.innerHTML = `
           <a href="${escapeHtml(val)}" target="_blank" rel="noopener noreferrer" class="metadata-link-btn">
-            🔗 Buka Link
+            ${icon || '🔗'} ${actionLabel}
           </a>
         `;
-      } else if (type === 'badge' || key === 'role') {
+      } else if (type === 'badge' || type === 'pill' || key === 'role' || (fieldDef && fieldDef.type === 'badge')) {
         valEl.innerHTML = `<span class="metadata-role-badge">${escapeHtml(val)}</span>`;
       } else {
         valEl.textContent = val;
@@ -2001,7 +2330,7 @@
 
     const setVisibility = (el, show, autoExpand = false) => {
       if (!el) return;
-      el.style.display = show ? 'block' : 'none';
+      el.style.display = show ? '' : 'none';
       if (show && autoExpand && el.classList.contains('form-group-collapsible')) {
         el.classList.remove('collapsed');
       }
@@ -2137,6 +2466,10 @@
     cardModal.style.display = 'flex';
     const modalBody = cardModal.querySelector('.modal-body');
     if (modalBody) modalBody.scrollTop = 0;
+    if (formContent) {
+      formContent.style.height = 'auto';
+      formContent.style.height = Math.max(90, formContent.scrollHeight) + 'px';
+    }
     formTitle.focus();
   }
 
@@ -2145,6 +2478,7 @@
   }
 
   function renderMetadataFormFields(existingData = {}) {
+    updateMetadataLabels();
     metadataFieldsContainer.innerHTML = '';
     const schema = metaEngine.getSchema();
 
@@ -2533,7 +2867,7 @@
   // --- EXPORT & IMPORT ---
   function exportDataJson() {
     const backupData = {
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       schema: metaEngine.getSchema(),
       cards: cards
@@ -2643,3 +2977,356 @@
   // Start app
   document.addEventListener('DOMContentLoaded', init);
 })();
+
+  // --- FILE EXPLORER IMPLEMENTATION ---
+  function switchExplorerView(mode) {
+    const detailPane = document.getElementById('explorerDetailView');
+    const treePane = document.getElementById('explorerTreeView');
+    const cardPane = document.getElementById('explorerCardView');
+
+    if (detailPane) detailPane.style.display = (mode === 'detail') ? 'block' : 'none';
+    if (treePane) treePane.style.display = (mode === 'tree') ? 'block' : 'none';
+    if (cardPane) cardPane.style.display = (mode === 'card') ? 'block' : 'none';
+
+    renderFileExplorer();
+  }
+
+  function getFilteredAndSortedDocs() {
+    let list = Array.isArray(indexedDocsList) ? [...indexedDocsList] : [];
+
+    // Filter by breadcrumb path if set
+    if (explorerCurrentPath) {
+      list = list.filter(d => (d.path || '').startsWith(explorerCurrentPath));
+    }
+
+    // Filter by search query
+    if (explorerSearchQuery) {
+      list = list.filter(d => {
+        const name = (d.file_name || d.fileName || '').toLowerCase();
+        const p = (d.path || '').toLowerCase();
+        return name.includes(explorerSearchQuery) || p.includes(explorerSearchQuery);
+      });
+    }
+
+    // Sort list
+    list.sort((a, b) => {
+      let valA, valB;
+      if (explorerSortKey === 'size') {
+        valA = a.size || 0;
+        valB = b.size || 0;
+      } else if (explorerSortKey === 'chunks') {
+        valA = a.chunk_count !== undefined ? a.chunk_count : (a.chunkCount || 0);
+        valB = b.chunk_count !== undefined ? b.chunk_count : (b.chunkCount || 0);
+      } else if (explorerSortKey === 'type') {
+        valA = (a.extension || '').toLowerCase();
+        valB = (b.extension || '').toLowerCase();
+      } else {
+        valA = (a.file_name || a.fileName || '').toLowerCase();
+        valB = (b.file_name || b.fileName || '').toLowerCase();
+      }
+
+      if (valA < valB) return explorerSortAsc ? -1 : 1;
+      if (valA > valB) return explorerSortAsc ? 1 : -1;
+      return 0;
+    });
+
+    return list;
+  }
+
+  function renderFileExplorer() {
+    const docs = getFilteredAndSortedDocs();
+    if (indexedFilesBadge) {
+      indexedFilesBadge.textContent = `${docs.length} berkas`;
+    }
+
+    renderExplorerBreadcrumbs();
+
+    if (explorerViewMode === 'tree') {
+      renderExplorerTreeView(docs);
+    } else if (explorerViewMode === 'card') {
+      renderExplorerCardView(docs);
+    } else {
+      renderIndexedDocsTable(docs);
+    }
+  }
+
+  function renderExplorerBreadcrumbs() {
+    const bar = document.getElementById('explorerBreadcrumbBar');
+    if (!bar) return;
+
+    bar.innerHTML = '';
+    const rootItem = document.createElement('span');
+    rootItem.className = `breadcrumb-item ${!explorerCurrentPath ? 'active' : ''}`;
+    rootItem.textContent = '📁 Semua Dokumen';
+    rootItem.addEventListener('click', () => {
+      explorerCurrentPath = '';
+      renderFileExplorer();
+    });
+    bar.appendChild(rootItem);
+
+    if (explorerCurrentPath) {
+      const parts = explorerCurrentPath.split(/[/\\]/).filter(Boolean);
+      let cumulativePath = '';
+
+      parts.forEach((part, idx) => {
+        const sep = document.createElement('span');
+        sep.className = 'breadcrumb-separator';
+        sep.textContent = ' / ';
+        bar.appendChild(sep);
+
+        // Rebuild platform separator correctly
+        cumulativePath += (idx === 0 && explorerCurrentPath.includes(':') ? part + '\\' : part + '\\');
+        const thisPath = cumulativePath.replace(/\\$/, '');
+
+        const item = document.createElement('span');
+        item.className = `breadcrumb-item ${idx === parts.length - 1 ? 'active' : ''}`;
+        item.textContent = part;
+        if (idx !== parts.length - 1) {
+          item.addEventListener('click', () => {
+            explorerCurrentPath = thisPath;
+            renderFileExplorer();
+          });
+        }
+        bar.appendChild(item);
+      });
+    }
+  }
+
+  // --- 1. Detail View (Table) ---
+  function renderIndexedDocsTable(docsToRender) {
+    if (!indexedFilesTableBody) return;
+    const docs = docsToRender || getFilteredAndSortedDocs();
+    indexedFilesTableBody.innerHTML = '';
+
+    if (!Array.isArray(docs) || docs.length === 0) {
+      indexedFilesTableBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="table-empty-cell">Tidak ada dokumen yang cocok dengan saringan atau belum diindeks.</td>
+        </tr>
+      `;
+      return;
+    }
+
+    docs.forEach(doc => {
+      const tr = document.createElement('tr');
+      const ext = (doc.extension || '').toLowerCase();
+      let docIcon = '📄';
+      if (ext === '.pdf') docIcon = '📕';
+      else if (ext === '.docx') docIcon = '📘';
+      else if (ext === '.xlsx') docIcon = '📗';
+      else if (ext === '.md') docIcon = '📝';
+
+      const formattedSize = docEngine.formatSize(doc.size || 0);
+      const chunkCount = doc.chunk_count !== undefined ? doc.chunk_count : (doc.chunkCount || 0);
+
+      let statusBadge = '<span class="badge badge-success">✓ Terindeks</span>';
+      if (doc.status === 'failed' || doc.status === 'error') {
+        statusBadge = `<span class="badge badge-danger" title="${escapeHtml(doc.last_error || 'Gagal diproses')}">✕ Gagal</span>`;
+      } else if (doc.status === 'processing') {
+        statusBadge = '<span class="badge badge-warning">⏳ Memproses</span>';
+      }
+
+      tr.innerHTML = `
+        <td>
+          <span style="margin-right: 0.35rem;">${docIcon}</span>
+          <strong title="${escapeHtml(doc.path)}">${escapeHtml(doc.file_name || doc.fileName || '')}</strong>
+        </td>
+        <td><code>${escapeHtml(ext.toUpperCase())}</code></td>
+        <td>${formattedSize}</td>
+        <td>${chunkCount} unit</td>
+        <td>${statusBadge}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn-table-action btn-view-doc" title="Lihat Teks Pratinjau">👁️</button>
+            <button class="btn-table-action btn-open-native" title="Buka di Windows Explorer">📁</button>
+          </div>
+        </td>
+      `;
+
+      tr.querySelector('.btn-view-doc').addEventListener('click', () => {
+        openDocumentViewerModal(doc);
+      });
+
+      tr.querySelector('.btn-open-native').addEventListener('click', async () => {
+        await requestOpenFile(doc.path, false, doc.folder_id || doc.folderId);
+      });
+
+      indexedFilesTableBody.appendChild(tr);
+    });
+  }
+
+  // --- 2. Tree View (Hierarchy) ---
+  function renderExplorerTreeView(docs) {
+    const treeContainer = document.getElementById('treeContainer');
+    if (!treeContainer) return;
+    treeContainer.innerHTML = '';
+
+    if (!docs || docs.length === 0) {
+      treeContainer.innerHTML = '<div class="tree-empty-notice">Tidak ada dokumen yang ditemukan.</div>';
+      return;
+    }
+
+    // Build directory tree structure
+    const rootTree = { name: 'Root', isFolder: true, children: {}, files: [] };
+
+    docs.forEach(doc => {
+      const fullPath = doc.path || '';
+      const parts = fullPath.split(/[/\\]/).filter(Boolean);
+      let curr = rootTree;
+
+      // Folders in path (excluding filename)
+      for (let i = 0; i < parts.length - 1; i++) {
+        const seg = parts[i];
+        if (!curr.children[seg]) {
+          curr.children[seg] = {
+            name: seg,
+            fullPath: parts.slice(0, i + 1).join('\\'),
+            isFolder: true,
+            children: {},
+            files: []
+          };
+        }
+        curr = curr.children[seg];
+      }
+      curr.files.push(doc);
+    });
+
+    const rootWrapper = document.createElement('div');
+    rootWrapper.className = 'tree-node tree-node-root';
+
+    // Render tree nodes recursively
+    function renderTreeNode(folderObj, parentEl) {
+      // Subfolders
+      Object.values(folderObj.children).forEach(sub => {
+        const nodeEl = document.createElement('div');
+        nodeEl.className = 'tree-node';
+
+        const row = document.createElement('div');
+        row.className = 'tree-item-row';
+        row.innerHTML = `
+          <span class="tree-toggle-arrow">▼</span>
+          <span class="tree-item-icon">📁</span>
+          <span class="tree-item-label" title="${escapeHtml(sub.fullPath)}">${escapeHtml(sub.name)}</span>
+          <div class="tree-item-meta">
+            <span>(${sub.files.length + Object.keys(sub.children).length} item)</span>
+            <button type="button" class="tree-actions-btn btn-open-folder" title="Buka folder di Windows Explorer">📁 Buka</button>
+          </div>
+        `;
+
+        // Toggle folder expand/collapse
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.btn-open-folder')) return;
+          nodeEl.classList.toggle('collapsed');
+        });
+
+        row.querySelector('.btn-open-folder').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await requestOpenFile(sub.fullPath, true);
+        });
+
+        nodeEl.appendChild(row);
+
+        const childrenEl = document.createElement('div');
+        childrenEl.className = 'tree-children';
+        renderTreeNode(sub, childrenEl);
+        nodeEl.appendChild(childrenEl);
+
+        parentEl.appendChild(nodeEl);
+      });
+
+      // Files in this folder
+      folderObj.files.forEach(doc => {
+        const fileRow = document.createElement('div');
+        fileRow.className = 'tree-item-row tree-file-row';
+        const ext = (doc.extension || '').toLowerCase();
+        let icon = '📄';
+        if (ext === '.pdf') icon = '📕';
+        else if (ext === '.docx') icon = '📘';
+        else if (ext === '.xlsx') icon = '📗';
+        else if (ext === '.md') icon = '📝';
+
+        fileRow.innerHTML = `
+          <span class="tree-toggle-arrow" style="opacity: 0;">•</span>
+          <span class="tree-item-icon">${icon}</span>
+          <span class="tree-item-label" title="${escapeHtml(doc.path)}">${escapeHtml(doc.file_name || doc.fileName || '')}</span>
+          <div class="tree-item-meta">
+            <span>${docEngine.formatSize(doc.size || 0)}</span>
+            <button type="button" class="tree-actions-btn btn-view-doc" title="Pratinjau Teks">👁️ Lihat</button>
+            <button type="button" class="tree-actions-btn btn-open-native" title="Buka Dokumen Asli">🚀 Buka</button>
+          </div>
+        `;
+
+        fileRow.querySelector('.btn-view-doc').addEventListener('click', () => {
+          openDocumentViewerModal(doc);
+        });
+
+        fileRow.querySelector('.btn-open-native').addEventListener('click', async () => {
+          await requestOpenFile(doc.path, false, doc.folder_id || doc.folderId);
+        });
+
+        parentEl.appendChild(fileRow);
+      });
+    }
+
+    renderTreeNode(rootTree, rootWrapper);
+    treeContainer.appendChild(rootWrapper);
+  }
+
+  // --- 3. Card View (Visual Tiles) ---
+  function renderExplorerCardView(docs) {
+    const grid = document.getElementById('docCardsGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    if (!docs || docs.length === 0) {
+      grid.innerHTML = '<div class="folders-empty-notice" style="grid-column: 1 / -1;">Tidak ada dokumen yang ditemukan.</div>';
+      return;
+    }
+
+    docs.forEach(doc => {
+      const card = document.createElement('div');
+      card.className = 'doc-tile-card';
+      const ext = (doc.extension || '').toLowerCase();
+      let icon = '📄';
+      if (ext === '.pdf') icon = '📕';
+      else if (ext === '.docx') icon = '📘';
+      else if (ext === '.xlsx') icon = '📗';
+      else if (ext === '.md') icon = '📝';
+
+      const chunkCount = doc.chunk_count !== undefined ? doc.chunk_count : (doc.chunkCount || 0);
+
+      card.innerHTML = `
+        <div class="doc-tile-header">
+          <div class="doc-tile-icon">${icon}</div>
+          <div class="doc-tile-info">
+            <span class="doc-tile-name" title="${escapeHtml(doc.path)}">${escapeHtml(doc.file_name || doc.fileName || '')}</span>
+            <div class="doc-tile-sub">${escapeHtml(ext.toUpperCase().replace('.', ''))} Dokumen</div>
+          </div>
+        </div>
+
+        <div class="doc-tile-details">
+          <span>📏 ${docEngine.formatSize(doc.size || 0)}</span>
+          <span>⚡ ${chunkCount} unit teks</span>
+        </div>
+
+        <div class="doc-tile-actions">
+          <button type="button" class="doc-tile-btn btn-view-doc" title="Pratinjau Teks Dokumen">
+            👁️ Pratinjau
+          </button>
+          <button type="button" class="doc-tile-btn btn-open-native" title="Buka Berkas di Windows Explorer">
+            📁 Buka
+          </button>
+        </div>
+      `;
+
+      card.querySelector('.btn-view-doc').addEventListener('click', () => {
+        openDocumentViewerModal(doc);
+      });
+
+      card.querySelector('.btn-open-native').addEventListener('click', async () => {
+        await requestOpenFile(doc.path, false, doc.folder_id || doc.folderId);
+      });
+
+      grid.appendChild(card);
+    });
+  }

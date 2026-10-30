@@ -6,7 +6,10 @@ $RootDir = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $RootDir
 
 Write-Host "=============================================" -ForegroundColor Cyan
-Write-Host " Building WeKeepIt v2.0 Release Packages    " -ForegroundColor Cyan
+$pkgJson = Get-Content (Join-Path $RootDir "package.json") -Raw | ConvertFrom-Json
+$AppVersion = $pkgJson.version
+if (-not $AppVersion) { $AppVersion = "2.1.0" }
+Write-Host " Building WeKeepIt v$AppVersion Release Packages    " -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 
 # 1. Build .NET Desktop Host
@@ -66,7 +69,7 @@ if (-not (Test-Path $RuntimeConfig)) {
 
 # 3. Build Portable Package (with portable.dat)
 Write-Host "`n[3/5] Assembling Portable Package..." -ForegroundColor Yellow
-$PortableStage = Join-Path $RootDir "package\WeKeepIt-v2.0.0-Portable"
+$PortableStage = Join-Path $RootDir "package\WeKeepIt-v$AppVersion-Portable"
 if (Test-Path $PortableStage) { Remove-Item $PortableStage -Recurse -Force }
 Copy-Item $AppFilesDir -Destination $PortableStage -Recurse -Force
 
@@ -76,7 +79,7 @@ Copy-Item (Join-Path $RootDir "wekeepit-data.sample.json") (Join-Path $PortableS
 Copy-Item (Join-Path $RootDir "launch-desktop.bat") (Join-Path $PortableStage "launch-desktop.bat") -Force
 Copy-Item (Join-Path $RootDir "WeKeepIt-Portable.bat") (Join-Path $PortableStage "WeKeepIt-Portable.bat") -Force
 
-$PortableZip = Join-Path $DistDir "WeKeepIt-v2.0.0-Portable.zip"
+$PortableZip = Join-Path $DistDir "WeKeepIt-v$AppVersion-Portable.zip"
 if (Test-Path $PortableZip) { Remove-Item $PortableZip -Force }
 Compress-Archive -Path "$PortableStage\*" -DestinationPath $PortableZip -Force
 Write-Host "  -> Portable ZIP created: $PortableZip" -ForegroundColor Green
@@ -118,7 +121,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "ISCC compilation failed with exit code $LASTEXITCODE"
 }
 
-$SetupExe = Join-Path $DistDir "WeKeepIt-v2.0.0-Setup.exe"
+$SetupExe = Join-Path $DistDir "WeKeepIt-v$AppVersion-Setup.exe"
 if (Test-Path $SetupExe) {
     $size = (Get-Item $SetupExe).Length / 1MB
     Write-Host "`n=============================================" -ForegroundColor Green

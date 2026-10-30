@@ -264,15 +264,20 @@ public partial class Form1 : Form
 
             webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
             webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+            webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
+            webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
 
-            // Check if backend server is available on port 4321
+            // Check if backend server is available on configured or default port (4321)
+            int serverPort = int.TryParse(Environment.GetEnvironmentVariable("PORT"), out var customPort) ? customPort : 4321;
+            string serverUrl = $"http://127.0.0.1:{serverPort}";
             bool serverOnline = false;
+
             for (int i = 0; i < 6; i++)
             {
                 try
                 {
                     using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
-                    var res = await client.GetAsync("http://127.0.0.1:4321/api/ping");
+                    var res = await client.GetAsync($"{serverUrl}/api/ping");
                     if (res.IsSuccessStatusCode)
                     {
                         serverOnline = true;
@@ -287,7 +292,7 @@ public partial class Form1 : Form
 
             if (serverOnline)
             {
-                webView.CoreWebView2.Navigate("http://127.0.0.1:4321/index.html");
+                webView.CoreWebView2.Navigate($"{serverUrl}/index.html");
             }
             else
             {
@@ -311,6 +316,52 @@ public partial class Form1 : Form
         if (e.IsSuccess)
         {
             SendInitialDataToWebView();
+        }
+    }
+
+    private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+    {
+        e.Handled = true;
+        OpenExternalUrl(e.Uri);
+    }
+
+    private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+    {
+        var uriStr = e.Uri;
+        if (Uri.TryCreate(uriStr, UriKind.Absolute, out var uri))
+        {
+            if (uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+                uri.Host.Equals("wekeepit.local", StringComparison.OrdinalIgnoreCase) ||
+                uri.Scheme.Equals("about", StringComparison.OrdinalIgnoreCase) ||
+                uri.Scheme.Equals("data", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            OpenExternalUrl(uri.AbsoluteUri);
+        }
+    }
+
+    private void OpenExternalUrl(string? targetUri)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(targetUri) &&
+                Uri.TryCreate(targetUri, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeMailto))
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = uri.AbsoluteUri,
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            try { File.AppendAllText(Path.Combine(dataDir, "link_error.log"), $"[OpenLinkError] {ex}\n\n"); } catch { }
         }
     }
 
