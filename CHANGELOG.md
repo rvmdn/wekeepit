@@ -5,6 +5,16 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 
 ---
 
+## [2.1.1] - 2026-11-09
+
+### Diperbaiki (Fixed)
+- **Tampilan Field Judul Catatan**: Memperbaiki bug pada modal card editor di mana input judul (*formTitle*) terjepit dan mengecil secara drastis akibat konflik flexbox dengan container sematkan (*pin*). Input judul kini tampil lebar penuh (100%) simetris dengan textarea isi catatan, dengan checkbox `📌 Pin` diposisikan secara rapi dan selaras di baris header label kanan (`.form-label-row`).
+- **Scroll & Overflow Modal Card Editor**: Memperbaiki bug di mana opsi tambahan (*Metadata Kustom*, *Lampiran Dokumen*, *Checklist*, dan *Pengingat*) terpotong di bagian bawah tanpa memunculkan bilah scroll (*no scrollbar*). Masalah ini diselesaikan dengan menerapkan `flex-shrink: 0` pada elemen anak `.modal-body` dan `.form-group-collapsible` guna mencegah Flexbox menciutkan kontainer yang meluap, menaikkan batas `max-height` modal menjadi `min(92vh, 800px)` agar lebih lega di layar modern, serta meningkatkan kontras indikator scrollbar visual.
+- **Auto Smooth Scroll Kategori**: Menambahkan navigasi *auto smooth scroll* saat pengguna memilih tipe catatan tertentu pada dropdown "Mau simpan apa?" sehingga antarmuka otomatis bergeser menampilkan bagian form collapsible yang relevan.
+- **Kekokohan Form Row Flexbox**: Memperbaiki deklarasi `.form-row > .form-group` dan `.form-row > .flex-1` secara global dengan `width: auto` dan `min-width: 0` untuk mencegah regresi penyusutan input pada baris form lainnya.
+
+---
+
 ## [2.1.0] - 2026-10-30
 
 ### Ditambahkan (Added)

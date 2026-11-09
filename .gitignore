@@ -4,6 +4,7 @@ wekeepit-index.db*
 node_modules/
 save_error.log
 startup_error.log
+*.log
 
 # .NET & Visual Studio build outputs
 bin/

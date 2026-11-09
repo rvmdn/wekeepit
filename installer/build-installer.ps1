@@ -8,7 +8,7 @@ Set-Location $RootDir
 Write-Host "=============================================" -ForegroundColor Cyan
 $pkgJson = Get-Content (Join-Path $RootDir "package.json") -Raw | ConvertFrom-Json
 $AppVersion = $pkgJson.version
-if (-not $AppVersion) { $AppVersion = "2.1.0" }
+if (-not $AppVersion) { $AppVersion = "2.1.1" }
 Write-Host " Building WeKeepIt v$AppVersion Release Packages    " -ForegroundColor Cyan
 Write-Host "=============================================" -ForegroundColor Cyan
 

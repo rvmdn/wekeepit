@@ -1,6 +1,6 @@
 {
   "name": "wekeepit",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Portable Card Notepad, Notice Board & Document Vault with Full-Text Search (PDF, Word, Excel)",
   "main": "server.js",
   "scripts": {

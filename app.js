@@ -823,7 +823,7 @@
           }
           const data = await res.json();
           const latestTag = (data.tag_name || data.name || '').trim();
-          const currentVersion = (document.getElementById('currentAppVersion')?.textContent.trim()) || 'v2.1.0';
+          const currentVersion = (document.getElementById('currentAppVersion')?.textContent.trim()) || 'v2.1.1';
 
           if (latestTag && latestTag !== currentVersion) {
             const installerAsset = data.assets?.find(a => typeof a.name === 'string' && a.name.endsWith('-Setup.exe'));
@@ -2385,6 +2385,18 @@
         setVisibility(attachmentsCollapsible, true);
         setVisibility(reminderCollapsible, true);
         break;
+    }
+
+    const activeSection = {
+      link: metadataCollapsible,
+      document: attachmentsCollapsible,
+      checklist: checklistCollapsible,
+      reminder: reminderCollapsible
+    }[type];
+    if (activeSection && type !== 'note') {
+      setTimeout(() => {
+        activeSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
     }
   }
 
