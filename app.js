@@ -639,10 +639,11 @@
 
     // Theme & Appearance Manager
     const THEMES = [
+      { id: 'bulletin-board', name: 'Buletin', isLight: false, headerHex: '#442a17', dot: 'linear-gradient(135deg, #d8a46b 50%, #fef08a 50%)' },
       { id: 'light-snow', name: 'Daylight Snow', isLight: true, headerHex: '#ffffff', dot: 'linear-gradient(135deg, #f6f8fa 50%, #4f46e5 50%)' },
       { id: 'light-cream', name: 'Warm Cream', isLight: true, headerHex: '#f7f3e8', dot: 'linear-gradient(135deg, #fcf9f2 50%, #b45309 50%)' },
       { id: 'obsidian', name: 'Obsidian', isLight: false, headerHex: '#161b22', dot: 'linear-gradient(135deg, #0e1117 50%, #6366f1 50%)' },
-      { id: 'ocean', name: 'Deep Ocean', isLight: false, headerHex: '#0f172a', dot: 'linear-gradient(135deg, #070d19 50%, #0284c7 50%)' },
+      { id: 'ocean', name: 'Deep Ocean', isLight: false, headerHex: '#081a33', dot: 'linear-gradient(135deg, #071b35 50%, #0284c7 50%)' },
       { id: 'forest', name: 'Nord Forest', isLight: false, headerHex: '#0d2017', dot: 'linear-gradient(135deg, #07140e 50%, #059669 50%)' },
       { id: 'amethyst', name: 'Amethyst', isLight: false, headerHex: '#181128', dot: 'linear-gradient(135deg, #0f0a1a 50%, #9333ea 50%)' },
       { id: 'amber', name: 'Sunset Amber', isLight: false, headerHex: '#1c150e', dot: 'linear-gradient(135deg, #120d08 50%, #d97706 50%)' },
@@ -773,13 +774,23 @@
       widgetModeBtn.querySelector('.btn-label').textContent = isWidget ? 'Mode Penuh' : 'Mode Widget';
     });
 
+  // Feedback animasi jika user klik luar modal (modal tidak tertutup agar input/data tidak hilang)
+  function triggerStaticModal(modalEl) {
+    if (!modalEl) return;
+    const dialog = modalEl.querySelector('.modal-dialog');
+    if (!dialog) return;
+    dialog.classList.remove('modal-dialog-static-nudge');
+    void dialog.offsetWidth; // trigger reflow
+    dialog.classList.add('modal-dialog-static-nudge');
+  }
+
     // Modals open/close
     document.getElementById('newCardBtn').addEventListener('click', () => openCardModal());
     document.getElementById('emptyActionBtn').addEventListener('click', () => openCardModal());
     document.getElementById('closeCardModal').addEventListener('click', closeCardModal);
     document.getElementById('cancelCardModal').addEventListener('click', closeCardModal);
     cardModal.addEventListener('click', (e) => {
-      if (e.target === cardModal) closeCardModal();
+      if (e.target === cardModal) triggerStaticModal(cardModal);
     });
 
     // Manage Schema modal
@@ -787,7 +798,7 @@
     document.getElementById('closeSchemaModal').addEventListener('click', () => schemaModal.style.display = 'none');
     document.getElementById('cancelSchemaModal').addEventListener('click', () => schemaModal.style.display = 'none');
     schemaModal.addEventListener('click', (e) => {
-      if (e.target === schemaModal) schemaModal.style.display = 'none';
+      if (e.target === schemaModal) triggerStaticModal(schemaModal);
     });
 
     // Data Export / Import modal
@@ -795,7 +806,7 @@
     document.getElementById('closeDataModal').addEventListener('click', () => dataModal.style.display = 'none');
     document.getElementById('closeDataModalBtn').addEventListener('click', () => dataModal.style.display = 'none');
     dataModal.addEventListener('click', (e) => {
-      if (e.target === dataModal) dataModal.style.display = 'none';
+      if (e.target === dataModal) triggerStaticModal(dataModal);
     });
 
     document.getElementById('downloadJsonBtn').addEventListener('click', exportDataJson);
@@ -900,7 +911,7 @@
     if (closeDocViewerModalBtn) closeDocViewerModalBtn.addEventListener('click', () => { docViewerModal.style.display = 'none'; });
     if (docViewerModal) {
       docViewerModal.addEventListener('click', (e) => {
-        if (e.target === docViewerModal) docViewerModal.style.display = 'none';
+        if (e.target === docViewerModal) triggerStaticModal(docViewerModal);
       });
     }
     if (copyDocTextBtn) copyDocTextBtn.addEventListener('click', copyActiveViewerDocText);
@@ -979,7 +990,7 @@
     if (cancelFolderModal) cancelFolderModal.addEventListener('click', closeFolderModalFn);
     if (folderModal) {
       folderModal.addEventListener('click', (e) => {
-        if (e.target === folderModal) closeFolderModalFn();
+        if (e.target === folderModal) triggerStaticModal(folderModal);
       });
     }
     if (addFolderForm) addFolderForm.addEventListener('submit', handleAddFolderSubmit);

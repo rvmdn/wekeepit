@@ -77,31 +77,31 @@
 }
 
 [data-theme="ocean"] {
-  --bg-app: #070d19;
-  --bg-surface: #0f172a;
-  --bg-surface-elevated: #1e293b;
-  --bg-surface-hover: #273549;
-  --border-subtle: rgba(56, 189, 248, 0.12);
+  --bg-app: #06152b;
+  --bg-surface: #0a1f3a;
+  --bg-surface-elevated: #0f2c52;
+  --bg-surface-hover: #153c6d;
+  --border-subtle: rgba(56, 189, 248, 0.16);
   --border-focus: #38bdf8;
-  --border-card: rgba(56, 189, 248, 0.08);
+  --border-card: rgba(56, 189, 248, 0.14);
 
-  --text-main: #f0f8ff;
-  --text-muted: #94a3b8;
-  --text-dim: #64748b;
+  --text-main: #f0f9ff;
+  --text-muted: #93c5fd;
+  --text-dim: #60a5fa;
 
   --accent-primary: #0284c7;
   --accent-primary-hover: #0369a1;
-  --accent-primary-glow: rgba(2, 132, 199, 0.3);
+  --accent-primary-glow: rgba(2, 132, 199, 0.35);
 
   --accent-cyan: #38bdf8;
   --accent-emerald: #10b981;
   --accent-amber: #f59e0b;
   --accent-rose: #f43f5e;
 
-  --header-hex: #0f172a;
-  --glass-bg: rgba(7, 13, 25, 0.75);
-  --glass-surface: rgba(15, 23, 42, 0.72);
-  --glass-card: rgba(15, 23, 42, 0.62);
+  --header-hex: #081a33;
+  --glass-bg: rgba(6, 21, 43, 0.88);
+  --glass-surface: rgba(10, 31, 58, 0.82);
+  --glass-card: rgba(12, 36, 68, 0.72);
 }
 
 [data-theme="forest"] {
@@ -298,6 +298,35 @@
   --glass-bg: rgba(252, 249, 242, 0.85);
   --glass-surface: rgba(247, 243, 232, 0.88);
   --glass-card: rgba(247, 243, 232, 0.82);
+}
+
+[data-theme="bulletin-board"] {
+  --font-sans: 'Ink Free', 'Segoe Print', 'Caveat', 'Comic Sans MS', cursive, sans-serif;
+  --bg-app: #d8a46b;
+  --bg-surface: #fffbeb;
+  --bg-surface-elevated: #fef08a;
+  --bg-surface-hover: #fef9c3;
+  --border-subtle: rgba(120, 80, 40, 0.18);
+  --border-focus: #b45309;
+  --border-card: rgba(180, 130, 50, 0.28);
+
+  --text-main: #292524;
+  --text-muted: #57534e;
+  --text-dim: #78716c;
+
+  --accent-primary: #b45309;
+  --accent-primary-hover: #92400e;
+  --accent-primary-glow: rgba(180, 83, 9, 0.22);
+
+  --accent-cyan: #0284c7;
+  --accent-emerald: #059669;
+  --accent-amber: #d97706;
+  --accent-rose: #dc2626;
+
+  --header-hex: #442a17;
+  --glass-bg: rgba(216, 164, 107, 0.94);
+  --glass-surface: rgba(254, 251, 235, 0.95);
+  --glass-card: rgba(254, 249, 195, 0.96);
 }
 
 *, *::before, *::after {
@@ -1022,6 +1051,19 @@ body {
   box-shadow: var(--shadow-lg);
   overflow: hidden;
   position: relative;
+  transition: transform 0.15s ease-out;
+}
+
+@keyframes modalStaticNudge {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.02); }
+  50% { transform: scale(0.995); }
+  75% { transform: scale(1.008); }
+  100% { transform: scale(1); }
+}
+
+.modal-dialog-static-nudge {
+  animation: modalStaticNudge 0.22s cubic-bezier(0.36, 0.07, 0.19, 0.97) !important;
 }
 
 .modal-card-editor {
@@ -1767,7 +1809,7 @@ body.theme-acrylic .modal-dialog {
 
 .theme-palette-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.45rem;
 }
 
@@ -1785,6 +1827,8 @@ body.theme-acrylic .modal-dialog {
   font-weight: 500;
   transition: var(--transition-fast);
   text-align: left;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .theme-chip-btn:hover {
@@ -3046,4 +3090,948 @@ body.font-mono {
   background: var(--accent-primary);
   color: #fff;
   border-color: var(--accent-primary);
+}
+
+/* ==========================================================================
+   Bulletin Board / Mading Theme ([data-theme="bulletin-board"])
+   Natural corkboard with warm tan grain, pastel yellow sticky notes & handwriting font
+   ========================================================================== */
+
+/* Authentic Handwriting Font for Bulletin Board Theme */
+[data-theme="bulletin-board"],
+[data-theme="bulletin-board"] body,
+[data-theme="bulletin-board"] button,
+[data-theme="bulletin-board"] input,
+[data-theme="bulletin-board"] textarea,
+[data-theme="bulletin-board"] select,
+[data-theme="bulletin-board"] .card,
+[data-theme="bulletin-board"] .modal-dialog {
+  font-family: 'Ink Free', 'Segoe Print', 'Caveat', 'Comic Sans MS', cursive, sans-serif !important;
+}
+
+/* Preserve clean tabular readability for Document Explorer technical data tables */
+[data-theme="bulletin-board"] .explorer-table,
+[data-theme="bulletin-board"] .doc-viewer-body,
+[data-theme="bulletin-board"] .indexer-stats-strip {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* Allow Monospace toggle option to still work when explicitly enabled */
+body.font-mono,
+[data-theme="bulletin-board"].font-mono,
+body.font-mono * {
+  font-family: "Cascadia Code", "Fira Code", "JetBrains Mono", Consolas, "Courier New", monospace !important;
+}
+
+/* Natural Corkboard Background (Tan / Krem Kayu Lembut, no harsh dots) */
+[data-theme="bulletin-board"] body,
+[data-theme="bulletin-board"] .app-container {
+  background-color: #d8a46b !important;
+  background-image: 
+    radial-gradient(circle at 50% 50%, rgba(255, 245, 220, 0.25) 0%, rgba(130, 85, 35, 0.28) 100%),
+    radial-gradient(rgba(165, 110, 55, 0.12) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1px),
+    repeating-linear-gradient(45deg, rgba(145, 95, 45, 0.04) 0, rgba(145, 95, 45, 0.04) 1px, transparent 1px, transparent 6px),
+    linear-gradient(180deg, #ddaa74 0%, #cf9c63 100%) !important;
+  background-size: 100% 100%, 8px 8px, 8px 8px, 12px 12px, 100% 100% !important;
+  background-position: 0 0, 0 0, 4px 4px, 0 0, 0 0 !important;
+  background-attachment: fixed !important;
+}
+
+/* Polished Solid Wood Header Frame */
+[data-theme="bulletin-board"] .app-header,
+[data-theme="bulletin-board"] body.theme-acrylic .app-header {
+  background: linear-gradient(180deg, #442a17 0%, #351f10 100%) !important;
+  border-bottom: 3px solid #201208 !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35) !important;
+  color: #faeedd !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="bulletin-board"] .logo-text,
+[data-theme="bulletin-board"] .app-header .logo-text,
+[data-theme="bulletin-board"] .app-header .app-title {
+  color: #fff4e0 !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7) !important;
+}
+
+[data-theme="bulletin-board"] .app-header .version-tag {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #ffe3b3 !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Header Buttons */
+[data-theme="bulletin-board"] .app-header .btn-secondary,
+[data-theme="bulletin-board"] body.theme-acrylic .app-header .btn-secondary,
+[data-theme="bulletin-board"] .app-header .btn-icon-only,
+[data-theme="bulletin-board"] body.theme-acrylic .app-header .btn-icon-only {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #faeedd !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+}
+
+[data-theme="bulletin-board"] .app-header .btn-secondary:hover,
+[data-theme="bulletin-board"] body.theme-acrylic .app-header .btn-secondary:hover,
+[data-theme="bulletin-board"] .app-header .btn-icon-only:hover,
+[data-theme="bulletin-board"] body.theme-acrylic .app-header .btn-icon-only:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="bulletin-board"] .app-header .btn-primary {
+  background: #c26928 !important;
+  color: #ffffff !important;
+  border: 1px solid #9c4e16 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+}
+
+[data-theme="bulletin-board"] .app-header .btn-primary:hover {
+  background: #d97832 !important;
+}
+
+/* Unified Wooden Header Search Bar */
+[data-theme="bulletin-board"] .search-box-wrapper,
+[data-theme="bulletin-board"] body.theme-acrylic .search-box-wrapper {
+  background: rgba(0, 0, 0, 0.38) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.32) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 1 !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper:focus-within,
+[data-theme="bulletin-board"] body.theme-acrylic .search-box-wrapper:focus-within {
+  background: rgba(0, 0, 0, 0.52) !important;
+  border-color: #d97832 !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(217, 120, 50, 0.35) !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .search-icon {
+  color: #f6ad55 !important;
+  opacity: 0.9 !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .search-scope-select,
+[data-theme="bulletin-board"] .search-scope-select,
+[data-theme="bulletin-board"] .search-mode-select {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff4e0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: var(--radius-sm) !important;
+  outline: none !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .search-scope-select:focus {
+  border-color: #f6ad55 !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .search-scope-select option,
+[data-theme="bulletin-board"] .search-scope-select option {
+  background: #351f10 !important;
+  color: #fff4e0 !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .search-input,
+[data-theme="bulletin-board"] .app-header .search-input {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  color: #ffffff !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .search-input::placeholder,
+[data-theme="bulletin-board"] .app-header .search-input::placeholder {
+  color: rgba(255, 244, 224, 0.6) !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .clear-search-btn {
+  background: transparent !important;
+  border: none !important;
+  color: #faeedd !important;
+  opacity: 0.8 !important;
+}
+
+[data-theme="bulletin-board"] .search-box-wrapper .clear-search-btn:hover {
+  opacity: 1 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="bulletin-board"] .explorer-search-box input {
+  background: #ffffff !important;
+  border: 1px solid #c9b08f !important;
+  color: #2b1f14 !important;
+}
+
+/* Nav Tabs & Navigation Bar (Wooden Header Sub-bar) */
+[data-theme="bulletin-board"] .nav-tabs,
+[data-theme="bulletin-board"] body.theme-acrylic .nav-tabs {
+  background: rgba(55, 32, 16, 0.92) !important;
+  border-bottom: 2px solid rgba(35, 18, 8, 0.95) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* Domain Tabs: Work Board, Dokumen Lokal, Hasil Pencarian */
+[data-theme="bulletin-board"] .domain-tab {
+  color: #f7e6d0 !important;
+  font-weight: 500 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: var(--radius-md) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+[data-theme="bulletin-board"] .domain-tab:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+
+[data-theme="bulletin-board"] .domain-tab.active,
+[data-theme="bulletin-board"] body.theme-acrylic .domain-tab.active {
+  background: #fef08a !important;
+  color: #292524 !important;
+  font-weight: 700 !important;
+  border: 1px solid rgba(180, 130, 50, 0.5) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35) !important;
+}
+
+[data-theme="bulletin-board"] .domain-tab .tab-count {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #faeedd !important;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+}
+
+[data-theme="bulletin-board"] .domain-tab.active .tab-count {
+  background: rgba(180, 83, 9, 0.2) !important;
+  color: #92400e !important;
+}
+
+/* Filter Nav Tabs: Semua, Pinned, Lampiran, Reminder, Checklist */
+[data-theme="bulletin-board"] .nav-tab {
+  color: #f7e6d0 !important;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+[data-theme="bulletin-board"] .nav-tab:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="bulletin-board"] .nav-tab.active,
+[data-theme="bulletin-board"] body.theme-acrylic .nav-tab.active {
+  background: #fef9c3 !important;
+  color: #292524 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+  border: 1px solid rgba(160, 110, 40, 0.4) !important;
+}
+
+[data-theme="bulletin-board"] .nav-tab .tab-count {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #faeedd !important;
+}
+
+[data-theme="bulletin-board"] .nav-tab.active .tab-count {
+  background: rgba(180, 83, 9, 0.2) !important;
+  color: #92400e !important;
+}
+
+/* View Density Toggle Buttons (Grid, Kompak, Bebas) */
+[data-theme="bulletin-board"] .view-density-toggle {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+[data-theme="bulletin-board"] .view-density-toggle button,
+[data-theme="bulletin-board"] .density-btn {
+  color: #faeedd !important;
+}
+
+[data-theme="bulletin-board"] .view-density-toggle button:hover,
+[data-theme="bulletin-board"] .density-btn:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="bulletin-board"] .view-density-toggle button.active,
+[data-theme="bulletin-board"] .density-btn.active,
+[data-theme="bulletin-board"] body.theme-acrylic .density-btn.active {
+  background: #fef08a !important;
+  color: #292524 !important;
+  font-weight: 600 !important;
+}
+
+/* Tidy Up Button */
+[data-theme="bulletin-board"] .tidy-up-btn {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #faeedd !important;
+  border: 1px solid rgba(255, 255, 255, 0.22) !important;
+}
+
+[data-theme="bulletin-board"] .tidy-up-btn:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+}
+
+/* Tag Bar (Seamless with corkboard, no stark white/cream bar) */
+[data-theme="bulletin-board"] .tag-bar-section,
+[data-theme="bulletin-board"] body.theme-acrylic .tag-bar-section {
+  background: transparent !important;
+  border-bottom: 1px dashed rgba(120, 80, 40, 0.35) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  padding: 0.5rem 1.25rem !important;
+}
+
+[data-theme="bulletin-board"] .tag-bar-section::-webkit-scrollbar {
+  display: none !important;
+}
+
+[data-theme="bulletin-board"] .tag-pill {
+  background: #fef9c3 !important;
+  color: #451a03 !important;
+  border: 1px solid rgba(160, 110, 45, 0.4) !important;
+  box-shadow: 0 1px 3px rgba(60, 30, 10, 0.15) !important;
+  font-weight: 500 !important;
+}
+
+[data-theme="bulletin-board"] .tag-pill:hover {
+  background: #fef08a !important;
+  border-color: #b45309 !important;
+  transform: translateY(-1px);
+}
+
+[data-theme="bulletin-board"] .tag-pill.active {
+  background: #b45309 !important;
+  color: #ffffff !important;
+  border-color: #78350f !important;
+  box-shadow: 0 2px 6px rgba(180, 83, 9, 0.35) !important;
+}
+
+/* Sticky Note Paper Cards (Kuning Pastel Memo dengan Garis Horizontal Tipis Ruled) */
+[data-theme="bulletin-board"] .card,
+[data-theme="bulletin-board"] body.theme-acrylic .card {
+  background-color: #fffbeb !important;
+  background-image: 
+    repeating-linear-gradient(
+      transparent,
+      transparent 23px,
+      rgba(175, 130, 55, 0.18) 23px,
+      rgba(175, 130, 55, 0.18) 24px
+    ),
+    linear-gradient(180deg, #fef9c3 0%, #fffbeb 100%) !important;
+  border: 1px solid rgba(217, 160, 60, 0.35) !important;
+  border-radius: 2px 3px 5px 2px !important;
+  box-shadow: 
+    0 1px 2px rgba(60, 30, 10, 0.12),
+    0 6px 14px rgba(70, 35, 10, 0.18),
+    inset 0 -2px 8px rgba(230, 190, 80, 0.15) !important;
+  color: #292524 !important;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease !important;
+  overflow: visible !important;
+  margin-top: 8px;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="bulletin-board"] .card:hover,
+[data-theme="bulletin-board"] body.theme-acrylic .card:hover {
+  background-color: #fffbeb !important;
+  background-image: 
+    repeating-linear-gradient(
+      transparent,
+      transparent 23px,
+      rgba(175, 130, 55, 0.22) 23px,
+      rgba(175, 130, 55, 0.22) 24px
+    ),
+    linear-gradient(180deg, #fefce8 0%, #fffbeb 100%) !important;
+}
+
+/* Subtle organic paper tilt on grid items */
+[data-theme="bulletin-board"] .card-grid:not(.free-canvas) .card:nth-child(4n+1) {
+  transform: rotate(-0.75deg);
+}
+[data-theme="bulletin-board"] .card-grid:not(.free-canvas) .card:nth-child(4n+2) {
+  transform: rotate(0.85deg);
+}
+[data-theme="bulletin-board"] .card-grid:not(.free-canvas) .card:nth-child(4n+3) {
+  transform: rotate(-0.45deg);
+}
+[data-theme="bulletin-board"] .card-grid:not(.free-canvas) .card:nth-child(4n+4) {
+  transform: rotate(0.6deg);
+}
+
+[data-theme="bulletin-board"] .card-grid:not(.free-canvas) .card:hover {
+  transform: rotate(0deg) translateY(-5px) scale(1.015) !important;
+  box-shadow: 
+    0 4px 8px rgba(60, 30, 10, 0.16),
+    0 14px 28px rgba(70, 35, 10, 0.28) !important;
+  z-index: 10 !important;
+}
+
+/* Washi Tape on standard note cards (selotip kertas krem semi-transparan) */
+[data-theme="bulletin-board"] .card:not(.pinned)::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-1deg);
+  width: 72px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.65);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8) 0%, rgba(245, 235, 200, 0.65) 100%);
+  border: 1px dashed rgba(180, 140, 80, 0.35);
+  box-shadow: 0 1px 3px rgba(60, 30, 10, 0.15);
+  border-radius: 1px;
+  clip-path: polygon(1% 0%, 99% 0%, 97% 100%, 3% 100%);
+  opacity: 0.88;
+  z-index: 6;
+  pointer-events: none;
+}
+
+/* Pushpin on pinned notes (📌 3D red pin) */
+[data-theme="bulletin-board"] .card.pinned::before {
+  content: '';
+  display: none;
+}
+
+[data-theme="bulletin-board"] .card.pinned::after {
+  content: '📌';
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%) rotate(14deg);
+  font-size: 1.55rem;
+  filter: drop-shadow(2px 4px 4px rgba(0, 0, 0, 0.5));
+  z-index: 12;
+  pointer-events: none;
+}
+
+/* Card Content Typography & Elements */
+[data-theme="bulletin-board"] .card-title {
+  color: #1c1917 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="bulletin-board"] .card-content {
+  color: #292524 !important;
+  line-height: 1.55 !important;
+}
+
+[data-theme="bulletin-board"] .card-content a {
+  color: #1d4ed8 !important;
+  text-decoration: underline;
+}
+
+/* Dynamic Metadata Inset Box on Cards */
+[data-theme="bulletin-board"] .card-metadata-box,
+[data-theme="bulletin-board"] body.theme-acrylic .card-metadata-box {
+  background: rgba(254, 243, 199, 0.65) !important;
+  border: 1px dashed rgba(180, 130, 60, 0.45) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 1px 3px rgba(180, 130, 60, 0.1) !important;
+}
+
+[data-theme="bulletin-board"] .metadata-row {
+  border-bottom: 1px dashed rgba(180, 130, 60, 0.2) !important;
+  padding-bottom: 0.25rem !important;
+}
+[data-theme="bulletin-board"] .metadata-row:last-child {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+[data-theme="bulletin-board"] .metadata-key {
+  color: #78350f !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+}
+
+[data-theme="bulletin-board"] .metadata-val {
+  color: #1c1917 !important;
+  font-weight: 600 !important;
+}
+
+/* Link Button in Metadata (Stationery Blue Pill) */
+[data-theme="bulletin-board"] .metadata-link-btn {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+  border: 1px solid #7dd3fc !important;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.15) !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+[data-theme="bulletin-board"] .metadata-link-btn:hover {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #0284c7 !important;
+  box-shadow: 0 2px 5px rgba(2, 132, 199, 0.35) !important;
+}
+
+/* Role / Access Badge in Metadata (Stationery Purple Pill) */
+[data-theme="bulletin-board"] .metadata-role-badge {
+  background: #f3e8ff !important;
+  color: #6b21a8 !important;
+  border: 1px solid #d8b4fe !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 2px rgba(107, 33, 168, 0.1) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Checklist Section on Cards */
+[data-theme="bulletin-board"] .card-checklist-box {
+  border-top: 1px dashed rgba(180, 130, 60, 0.3) !important;
+}
+
+[data-theme="bulletin-board"] .checklist-progress-bar-wrap {
+  color: #78350f !important;
+}
+
+[data-theme="bulletin-board"] .checklist-progress-track {
+  background: rgba(180, 130, 60, 0.2) !important;
+}
+
+[data-theme="bulletin-board"] .checklist-progress-fill {
+  background: #b45309 !important;
+}
+
+[data-theme="bulletin-board"] .checklist-item {
+  color: #292524 !important;
+}
+
+[data-theme="bulletin-board"] .checklist-item.done span {
+  color: #78716c !important;
+}
+
+/* Attachments in Cards */
+[data-theme="bulletin-board"] .doc-item-card,
+[data-theme="bulletin-board"] body.theme-acrylic .doc-item-card {
+  background: rgba(254, 243, 199, 0.65) !important;
+  border: 1px dashed rgba(180, 130, 60, 0.45) !important;
+  color: #292524 !important;
+}
+
+[data-theme="bulletin-board"] .doc-item-card:hover {
+  background: rgba(254, 240, 138, 0.8) !important;
+  border-color: #b45309 !important;
+}
+
+/* Reminder Badge in Cards */
+[data-theme="bulletin-board"] .reminder-badge {
+  background: rgba(180, 83, 9, 0.12) !important;
+  color: #92400e !important;
+  border: 1px solid rgba(180, 83, 9, 0.3) !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="bulletin-board"] .reminder-badge.overdue {
+  background: rgba(220, 38, 38, 0.12) !important;
+  color: #b91c1c !important;
+  border-color: rgba(220, 38, 38, 0.35) !important;
+}
+
+[data-theme="bulletin-board"] .card-footer {
+  border-top: 1px dashed rgba(180, 130, 60, 0.25) !important;
+}
+
+[data-theme="bulletin-board"] .tag-chip {
+  background: #fef08a !important;
+  color: #78350f !important;
+  border: 1px solid rgba(180, 130, 50, 0.3) !important;
+  box-shadow: 0 1px 2px rgba(60, 30, 10, 0.08) !important;
+}
+
+[data-theme="bulletin-board"] .card-action-btn {
+  color: #78716c;
+}
+
+[data-theme="bulletin-board"] .card-action-btn:hover {
+  background: rgba(180, 130, 50, 0.15);
+  color: #1c1917;
+}
+
+/* Section Titles & Labels (High contrast against corkboard) */
+[data-theme="bulletin-board"] .library-title,
+[data-theme="bulletin-board"] .section-title,
+[data-theme="bulletin-board"] .registered-folders-section h3,
+[data-theme="bulletin-board"] .board-filter-notice,
+[data-theme="bulletin-board"] .search-summary-text,
+[data-theme="bulletin-board"] .folders-view h2,
+[data-theme="bulletin-board"] .folders-view h3 {
+  color: #38200d !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+  font-weight: 700;
+}
+
+[data-theme="bulletin-board"] .library-subtitle,
+[data-theme="bulletin-board"] .section-subtitle,
+[data-theme="bulletin-board"] .folders-view p {
+  color: #5a3818 !important;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) !important;
+}
+
+/* Panels & Metric Cards on Dokumen Lokal */
+[data-theme="bulletin-board"] .indexer-metric-card,
+[data-theme="bulletin-board"] .folder-card,
+[data-theme="bulletin-board"] .document-browser-panel {
+  background: #fffdf5 !important;
+  border: 1px solid rgba(180, 135, 75, 0.35) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 3px 10px rgba(60, 35, 10, 0.18) !important;
+  color: #292524 !important;
+}
+
+/* ==========================================================================
+   Modal in Bulletin Board Style (Craft Notepad / Wooden Clipboard)
+   ========================================================================== */
+[data-theme="bulletin-board"] .modal-overlay {
+  background: rgba(30, 16, 8, 0.65) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+[data-theme="bulletin-board"] .modal-dialog {
+  background: #fdfaf3 !important;
+  border: 2px solid #6b3e1c !important;
+  border-radius: 8px !important;
+  box-shadow: 
+    0 10px 25px rgba(25, 12, 4, 0.45),
+    0 25px 60px rgba(20, 10, 3, 0.5) !important;
+  color: #2b1f14 !important;
+}
+
+/* Modal Header: Polished Wood Header Frame */
+[data-theme="bulletin-board"] .modal-header {
+  background: linear-gradient(180deg, #442a17 0%, #351f10 100%) !important;
+  border-bottom: 2px solid #201208 !important;
+  color: #faeedd !important;
+  padding: 0.85rem 1.25rem !important;
+}
+
+[data-theme="bulletin-board"] .modal-title {
+  color: #fff4e0 !important;
+  font-weight: 700 !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+[data-theme="bulletin-board"] .modal-close {
+  color: #f7e6d0 !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  border-radius: var(--radius-sm) !important;
+  transition: all var(--transition-fast) !important;
+}
+
+[data-theme="bulletin-board"] .modal-close:hover {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #ffffff !important;
+}
+
+/* Modal Body */
+[data-theme="bulletin-board"] .modal-body {
+  background: #fdfaf3 !important;
+  color: #2b1f14 !important;
+}
+
+/* Type Selector Box (Mau Simpan Apa?) - Warm Amber/Memo Theme */
+[data-theme="bulletin-board"] .card-type-selector-box {
+  background: rgba(254, 243, 199, 0.75) !important;
+  border: 1px solid rgba(180, 130, 50, 0.4) !important;
+  box-shadow: inset 0 1px 3px rgba(180, 130, 50, 0.1) !important;
+}
+
+[data-theme="bulletin-board"] .type-selector-label {
+  color: #78350f !important;
+  font-weight: 700 !important;
+}
+
+[data-theme="bulletin-board"] .card-type-select {
+  background: #ffffff !important;
+  border: 1px solid #c9a474 !important;
+  color: #2b1f14 !important;
+  font-weight: 500 !important;
+}
+
+[data-theme="bulletin-board"] .card-type-select:focus {
+  border-color: #b45309 !important;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.2) !important;
+}
+
+/* Form Labels & Pin Checkbox */
+[data-theme="bulletin-board"] .modal-dialog .form-label {
+  color: #451a03 !important;
+  font-weight: 600 !important;
+  font-size: 0.82rem !important;
+}
+
+[data-theme="bulletin-board"] .modal-dialog .modal-subtitle {
+  color: #785028 !important;
+}
+
+[data-theme="bulletin-board"] .pin-checkbox span {
+  color: #b45309 !important;
+  font-weight: 600 !important;
+}
+
+/* Form Inputs & Selects */
+[data-theme="bulletin-board"] .modal-dialog .form-input,
+[data-theme="bulletin-board"] .modal-dialog .form-select {
+  background: #fffdf8 !important;
+  border: 1px solid #d4b58c !important;
+  border-radius: 4px !important;
+  color: #292524 !important;
+  box-shadow: inset 0 1px 2px rgba(120, 80, 40, 0.08) !important;
+}
+
+[data-theme="bulletin-board"] .modal-dialog .form-input:focus,
+[data-theme="bulletin-board"] .modal-dialog .form-select:focus {
+  border-color: #b45309 !important;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.2) !important;
+  background: #ffffff !important;
+}
+
+/* Ruled Lined Notebook Textarea inside Modal */
+[data-theme="bulletin-board"] .modal-dialog .form-textarea {
+  background-color: #fffdf5 !important;
+  background-image: 
+    repeating-linear-gradient(
+      transparent,
+      transparent 23px,
+      rgba(175, 130, 55, 0.16) 23px,
+      rgba(175, 130, 55, 0.16) 24px
+    ) !important;
+  line-height: 24px !important;
+  border: 1px solid #d4b58c !important;
+  border-radius: 4px !important;
+  color: #292524 !important;
+  box-shadow: inset 0 1px 3px rgba(120, 80, 40, 0.1) !important;
+}
+
+[data-theme="bulletin-board"] .modal-dialog .form-textarea:focus {
+  border-color: #b45309 !important;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.2) !important;
+}
+
+/* Collapsible Form Sections (Metadata, Checklist) */
+[data-theme="bulletin-board"] .modal-dialog .collapsible-header {
+  background: #fef08a !important;
+  color: #451a03 !important;
+  border: 1px solid rgba(180, 130, 50, 0.35) !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="bulletin-board"] .modal-dialog .collapsible-body {
+  background: rgba(255, 253, 245, 0.8) !important;
+  border: 1px dashed rgba(180, 130, 50, 0.3) !important;
+  border-top: none !important;
+}
+
+/* Active Color Swatch */
+[data-theme="bulletin-board"] .color-swatch.active {
+  border-color: #451a03 !important;
+  box-shadow: 0 0 0 2px rgba(180, 83, 9, 0.4) !important;
+  transform: scale(1.15);
+}
+
+/* Tag Suggestions */
+[data-theme="bulletin-board"] .tag-suggestion-chip {
+  background: #fef08a !important;
+  color: #451a03 !important;
+  border: 1px solid rgba(160, 110, 45, 0.35) !important;
+}
+
+/* Modal Footer & Buttons */
+[data-theme="bulletin-board"] .modal-footer {
+  background: #f5ead4 !important;
+  border-top: 1px solid rgba(140, 90, 45, 0.25) !important;
+  padding: 0.85rem 1.25rem !important;
+}
+
+[data-theme="bulletin-board"] .modal-footer .btn-secondary {
+  background: #fffbeb !important;
+  color: #451a03 !important;
+  border: 1px solid #c9a474 !important;
+  box-shadow: 0 1px 2px rgba(60, 30, 10, 0.1) !important;
+  font-weight: 500 !important;
+}
+
+[data-theme="bulletin-board"] .modal-footer .btn-secondary:hover {
+  background: #fef08a !important;
+  border-color: #b45309 !important;
+}
+
+[data-theme="bulletin-board"] .modal-footer .btn-primary {
+  background: #c26928 !important;
+  color: #ffffff !important;
+  border: 1px solid #9c4e16 !important;
+  box-shadow: 0 2px 6px rgba(60, 30, 10, 0.25) !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="bulletin-board"] .modal-footer .btn-primary:hover {
+  background: #d97832 !important;
+}
+
+/* ==========================================================================
+   Deep Ocean Theme Styling (Atmospheric Oceanic Abyss & Sea-Glass Tones)
+   ========================================================================== */
+
+/* Deep Ocean Background (Vibrant Marine Abyss with Atmospheric Surface Glow) */
+[data-theme="ocean"] body,
+[data-theme="ocean"] body.theme-acrylic,
+[data-theme="ocean"] .app-container {
+  background-color: #06152b !important;
+  background-image: 
+    radial-gradient(ellipse 120% 70% at 50% -15%, #0e3a68 0%, #082245 45%, #040f1f 100%),
+    linear-gradient(180deg, #071b35 0%, #030a16 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* Deep Ocean Header */
+[data-theme="ocean"] .app-header,
+[data-theme="ocean"] body.theme-acrylic .app-header {
+  background: rgba(8, 26, 51, 0.88) !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+
+/* Deep Ocean Inset Search Box */
+[data-theme="ocean"] .search-box-wrapper,
+[data-theme="ocean"] body.theme-acrylic .search-box-wrapper {
+  background: rgba(4, 15, 30, 0.65) !important;
+  border: 1px solid rgba(56, 189, 248, 0.22) !important;
+  box-shadow: inset 0 2px 4px rgba(2, 10, 24, 0.4) !important;
+}
+
+[data-theme="ocean"] .search-box-wrapper:focus-within,
+[data-theme="ocean"] body.theme-acrylic .search-box-wrapper:focus-within {
+  background: rgba(4, 15, 30, 0.85) !important;
+  border-color: #38bdf8 !important;
+  box-shadow: inset 0 2px 4px rgba(2, 10, 24, 0.4), 0 0 0 2px rgba(56, 189, 248, 0.3) !important;
+}
+
+/* Deep Ocean Navigation Bar & Tabs */
+[data-theme="ocean"] .nav-tabs,
+[data-theme="ocean"] body.theme-acrylic .nav-tabs {
+  background: rgba(6, 20, 39, 0.75) !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.15) !important;
+}
+
+[data-theme="ocean"] .domain-tab {
+  color: #93c5fd !important;
+  border: 1px solid rgba(56, 189, 248, 0.14) !important;
+  background: rgba(10, 31, 58, 0.45) !important;
+}
+
+[data-theme="ocean"] .domain-tab:hover {
+  background: rgba(14, 45, 82, 0.65) !important;
+  color: #f0f9ff !important;
+  border-color: rgba(56, 189, 248, 0.35) !important;
+}
+
+[data-theme="ocean"] .domain-tab.active,
+[data-theme="ocean"] body.theme-acrylic .domain-tab.active {
+  background: rgba(2, 132, 199, 0.3) !important;
+  color: #ffffff !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.25) !important;
+}
+
+/* Deep Ocean Tag Bar */
+[data-theme="ocean"] .tag-bar-section,
+[data-theme="ocean"] body.theme-acrylic .tag-bar-section {
+  background: rgba(6, 20, 39, 0.6) !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.12) !important;
+}
+
+[data-theme="ocean"] .tag-pill {
+  background: rgba(10, 31, 58, 0.7) !important;
+  color: #bae6fd !important;
+  border: 1px solid rgba(56, 189, 248, 0.2) !important;
+}
+
+[data-theme="ocean"] .tag-pill:hover {
+  background: rgba(14, 45, 82, 0.85) !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.3) !important;
+}
+
+[data-theme="ocean"] .tag-pill.active {
+  background: #0284c7 !important;
+  color: #ffffff !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4) !important;
+}
+
+/* Deep Ocean Cards (Sea-Glass Acrylic with Bioluminescent Hover Glow) */
+[data-theme="ocean"] .card,
+[data-theme="ocean"] body.theme-acrylic .card {
+  background: rgba(11, 33, 62, 0.72) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(56, 189, 248, 0.16) !important;
+  box-shadow: 0 8px 24px rgba(2, 10, 24, 0.45) !important;
+}
+
+[data-theme="ocean"] .card:hover,
+[data-theme="ocean"] body.theme-acrylic .card:hover {
+  background: rgba(15, 43, 80, 0.85) !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 12px 32px rgba(2, 132, 199, 0.25), 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+  transform: translateY(-2px);
+}
+
+/* Deep Ocean Card Metadata Inset */
+[data-theme="ocean"] .card-metadata-box,
+[data-theme="ocean"] body.theme-acrylic .card-metadata-box {
+  background: rgba(4, 15, 30, 0.55) !important;
+  border: 1px solid rgba(56, 189, 248, 0.15) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+[data-theme="ocean"] .metadata-key {
+  color: #7dd3fc !important;
+}
+
+[data-theme="ocean"] .metadata-val {
+  color: #f0f9ff !important;
+}
+
+/* Deep Ocean Modal Dialog */
+[data-theme="ocean"] .modal-dialog,
+[data-theme="ocean"] body.theme-acrylic .modal-dialog {
+  background: rgba(9, 28, 54, 0.95) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+  border: 1px solid rgba(56, 189, 248, 0.25) !important;
+  box-shadow: 0 20px 50px rgba(2, 8, 20, 0.65) !important;
+}
+
+[data-theme="ocean"] .card-type-selector-box {
+  background: rgba(6, 20, 39, 0.6) !important;
+  border: 1px solid rgba(56, 189, 248, 0.2) !important;
+}
+
+/* Deep Ocean Dokumen Lokal Panels */
+[data-theme="ocean"] .indexer-metric-card,
+[data-theme="ocean"] .folder-card,
+[data-theme="ocean"] .document-browser-panel {
+  background: rgba(10, 31, 58, 0.75) !important;
+  border: 1px solid rgba(56, 189, 248, 0.18) !important;
+  box-shadow: 0 4px 16px rgba(2, 10, 24, 0.35) !important;
 }
