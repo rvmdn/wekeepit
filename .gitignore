@@ -21,9 +21,7 @@ WebView2Profile/
 EBWebView/
 
 # Pre-packaged local binary folders (Artifacts will be built by GitHub Actions)
-WeKeepIt-v1.0-Portable/
-WeKeepIt-v1.1-Portable/
-WeKeepIt-v1.2-Portable/
+# Latest portable build: package/WeKeepIt-v2.1.1-Portable/ (not committed, build locally)
 WeKeepIt-*-Portable/
 WeKeepIt-*-Portable.zip
 WeKeepIt-*.zip
