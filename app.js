@@ -172,6 +172,34 @@
   const dataModal = document.getElementById('dataModal');
   const reminderToast = document.getElementById('reminderToast');
 
+  // --- MODAL OVERLAY HELPERS ---
+  function showModalOverlay(modalEl) {
+    if (!modalEl) return;
+    modalEl.style.display = 'flex';
+    modalEl.scrollTop = 0;
+    const mb = modalEl.querySelector('.modal-body');
+    if (mb) mb.scrollTop = 0;
+    document.body.classList.add('modal-open');
+  }
+
+  function hideModalOverlay(modalEl) {
+    if (!modalEl) return;
+    modalEl.style.display = 'none';
+    const anyOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
+    if (!anyOpen) {
+      document.body.classList.remove('modal-open');
+    }
+  }
+
+  function triggerStaticModal(modalEl) {
+    if (!modalEl) return;
+    const dialog = modalEl.querySelector('.modal-dialog');
+    if (!dialog) return;
+    dialog.classList.remove('modal-dialog-static-nudge');
+    void dialog.offsetWidth;
+    dialog.classList.add('modal-dialog-static-nudge');
+  }
+
   // Form State
   let editingChecklist = [];
   let editingAttachments = [];
@@ -774,33 +802,7 @@
       widgetModeBtn.querySelector('.btn-label').textContent = isWidget ? 'Mode Penuh' : 'Mode Widget';
     });
 
-  function showModalOverlay(modalEl) {
-    if (!modalEl) return;
-    modalEl.style.display = 'flex';
-    modalEl.scrollTop = 0;
-    const mb = modalEl.querySelector('.modal-body');
-    if (mb) mb.scrollTop = 0;
-    document.body.classList.add('modal-open');
-  }
 
-  function hideModalOverlay(modalEl) {
-    if (!modalEl) return;
-    modalEl.style.display = 'none';
-    const anyOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
-    if (!anyOpen) {
-      document.body.classList.remove('modal-open');
-    }
-  }
-
-  // Feedback animasi jika user klik luar modal (modal tidak tertutup agar input/data tidak hilang)
-  function triggerStaticModal(modalEl) {
-    if (!modalEl) return;
-    const dialog = modalEl.querySelector('.modal-dialog');
-    if (!dialog) return;
-    dialog.classList.remove('modal-dialog-static-nudge');
-    void dialog.offsetWidth; // trigger reflow
-    dialog.classList.add('modal-dialog-static-nudge');
-  }
 
     // Modals open/close
     document.getElementById('newCardBtn').addEventListener('click', () => openCardModal());
