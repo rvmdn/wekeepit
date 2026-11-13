@@ -774,6 +774,24 @@
       widgetModeBtn.querySelector('.btn-label').textContent = isWidget ? 'Mode Penuh' : 'Mode Widget';
     });
 
+  function showModalOverlay(modalEl) {
+    if (!modalEl) return;
+    modalEl.style.display = 'flex';
+    modalEl.scrollTop = 0;
+    const mb = modalEl.querySelector('.modal-body');
+    if (mb) mb.scrollTop = 0;
+    document.body.classList.add('modal-open');
+  }
+
+  function hideModalOverlay(modalEl) {
+    if (!modalEl) return;
+    modalEl.style.display = 'none';
+    const anyOpen = document.querySelector('.modal-overlay[style*="display: flex"]');
+    if (!anyOpen) {
+      document.body.classList.remove('modal-open');
+    }
+  }
+
   // Feedback animasi jika user klik luar modal (modal tidak tertutup agar input/data tidak hilang)
   function triggerStaticModal(modalEl) {
     if (!modalEl) return;
@@ -795,16 +813,16 @@
 
     // Manage Schema modal
     document.getElementById('manageSchemaBtn').addEventListener('click', openSchemaModal);
-    document.getElementById('closeSchemaModal').addEventListener('click', () => schemaModal.style.display = 'none');
-    document.getElementById('cancelSchemaModal').addEventListener('click', () => schemaModal.style.display = 'none');
+    document.getElementById('closeSchemaModal').addEventListener('click', () => hideModalOverlay(schemaModal));
+    document.getElementById('cancelSchemaModal').addEventListener('click', () => hideModalOverlay(schemaModal));
     schemaModal.addEventListener('click', (e) => {
       if (e.target === schemaModal) triggerStaticModal(schemaModal);
     });
 
     // Data Export / Import modal
-    document.getElementById('exportImportBtn').addEventListener('click', () => dataModal.style.display = 'flex');
-    document.getElementById('closeDataModal').addEventListener('click', () => dataModal.style.display = 'none');
-    document.getElementById('closeDataModalBtn').addEventListener('click', () => dataModal.style.display = 'none');
+    document.getElementById('exportImportBtn').addEventListener('click', () => showModalOverlay(dataModal));
+    document.getElementById('closeDataModal').addEventListener('click', () => hideModalOverlay(dataModal));
+    document.getElementById('closeDataModalBtn').addEventListener('click', () => hideModalOverlay(dataModal));
     dataModal.addEventListener('click', (e) => {
       if (e.target === dataModal) triggerStaticModal(dataModal);
     });
@@ -907,8 +925,8 @@
     }
 
     // Document Viewer Modal Actions
-    if (closeDocViewerModal) closeDocViewerModal.addEventListener('click', () => { docViewerModal.style.display = 'none'; });
-    if (closeDocViewerModalBtn) closeDocViewerModalBtn.addEventListener('click', () => { docViewerModal.style.display = 'none'; });
+    if (closeDocViewerModal) closeDocViewerModal.addEventListener('click', () => { hideModalOverlay(docViewerModal); });
+    if (closeDocViewerModalBtn) closeDocViewerModalBtn.addEventListener('click', () => { hideModalOverlay(docViewerModal); });
     if (docViewerModal) {
       docViewerModal.addEventListener('click', (e) => {
         if (e.target === docViewerModal) triggerStaticModal(docViewerModal);
@@ -921,7 +939,7 @@
     if (formContent) {
       formContent.addEventListener('input', () => {
         formContent.style.height = 'auto';
-        formContent.style.height = Math.max(90, formContent.scrollHeight) + 'px';
+        formContent.style.height = Math.max(68, Math.min(180, formContent.scrollHeight)) + 'px';
       });
     }
 
@@ -1098,12 +1116,12 @@
     if (folderPathInput) folderPathInput.value = '';
     if (folderRecursiveCheck) folderRecursiveCheck.checked = true;
     if (folderExclusionsInput) folderExclusionsInput.value = '.git, node_modules, bin, obj, temp';
-    if (folderModal) folderModal.style.display = 'flex';
+    if (folderModal) showModalOverlay(folderModal);
     if (folderPathInput) folderPathInput.focus();
   }
 
   function closeFolderModalFn() {
-    if (folderModal) folderModal.style.display = 'none';
+    if (folderModal) hideModalOverlay(folderModal);
   }
 
   async function handleAddFolderSubmit(e) {
@@ -2486,7 +2504,7 @@
 
     renderChecklistEditor();
     renderAttachmentsEditor();
-    cardModal.style.display = 'flex';
+    showModalOverlay(cardModal);
     const modalBody = cardModal.querySelector('.modal-body');
     if (modalBody) modalBody.scrollTop = 0;
     if (formContent) {
@@ -2497,7 +2515,7 @@
   }
 
   function closeCardModal() {
-    cardModal.style.display = 'none';
+    hideModalOverlay(cardModal);
   }
 
   function renderMetadataFormFields(existingData = {}) {
@@ -2789,7 +2807,7 @@
     if (docViewerContent) {
       docViewerContent.textContent = att.textCorpus || 'Isi dokumen kosong atau tidak terdeteksi teks.';
     }
-    docViewerModal.style.display = 'flex';
+    showModalOverlay(docViewerModal);
   }
 
   function copyActiveViewerDocText() {
@@ -2823,7 +2841,7 @@
   // --- SCHEMA MODAL ---
   function openSchemaModal() {
     renderSchemaList();
-    schemaModal.style.display = 'flex';
+    showModalOverlay(schemaModal);
   }
 
   function renderSchemaList() {
