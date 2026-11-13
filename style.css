@@ -1031,6 +1031,11 @@ body.modal-open {
 .modal-overlay {
   position: fixed;
   inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
@@ -1754,8 +1759,6 @@ body.widget-mode .card {
 
 body.theme-acrylic {
   background-color: var(--glass-bg, rgba(14, 17, 23, 0.75)) !important;
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
 }
 
 body.theme-acrylic .app-header {
