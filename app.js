@@ -1117,7 +1117,7 @@
     if (folderRecursiveCheck) folderRecursiveCheck.checked = true;
     if (folderExclusionsInput) folderExclusionsInput.value = '.git, node_modules, bin, obj, temp';
     if (folderModal) showModalOverlay(folderModal);
-    if (folderPathInput) folderPathInput.focus();
+    if (folderPathInput) folderPathInput.focus({ preventScroll: true });
   }
 
   function closeFolderModalFn() {
@@ -2509,9 +2509,9 @@
     if (modalBody) modalBody.scrollTop = 0;
     if (formContent) {
       formContent.style.height = 'auto';
-      formContent.style.height = Math.max(90, formContent.scrollHeight) + 'px';
+      formContent.style.height = Math.max(64, Math.min(160, formContent.scrollHeight)) + 'px';
     }
-    formTitle.focus();
+    formTitle.focus({ preventScroll: true });
   }
 
   function closeCardModal() {

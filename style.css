@@ -1038,8 +1038,8 @@ body.modal-open {
   align-items: center;
   justify-content: center;
   z-index: 100;
-  padding: clamp(0.5rem, 2.5vh, 1.25rem) 1rem;
-  overflow-y: auto;
+  padding: clamp(0.5rem, 2vh, 1.25rem) 1rem;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
@@ -1049,8 +1049,8 @@ body.modal-open {
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 580px;
-  max-height: calc(100vh - 2.5rem);
-  max-height: calc(100dvh - 2.5rem);
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
   height: auto;
   display: flex;
   flex-direction: column;
@@ -1076,8 +1076,8 @@ body.modal-open {
 
 .modal-card-editor {
   max-width: 580px;
-  max-height: calc(100vh - 2.5rem);
-  max-height: calc(100dvh - 2.5rem);
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
 }
 
 .modal-dialog > form,
@@ -1168,46 +1168,50 @@ body.modal-open {
 /* Responsive Modal Sizing for Compact / Shorter Displays (e.g. 768p / High DPI / Windowed) */
 @media (max-height: 760px) {
   .modal-overlay {
-    padding: 0.5rem 0.75rem;
+    padding: 0.4rem 0.75rem;
   }
 
   .modal-dialog {
-    max-height: calc(100vh - 1rem);
-    max-height: calc(100dvh - 1rem);
+    max-height: calc(100vh - 0.8rem);
+    max-height: calc(100dvh - 0.8rem);
   }
 
   .modal-card-editor,
   .modal-schema-manager,
   .modal-doc-viewer {
-    max-height: calc(100vh - 1rem);
-    max-height: calc(100dvh - 1rem);
+    max-height: calc(100vh - 0.8rem);
+    max-height: calc(100dvh - 0.8rem);
   }
 
   .modal-header {
-    padding: 0.55rem 1rem !important;
+    padding: 0.5rem 1rem !important;
   }
 
   .modal-footer {
-    padding: 0.55rem 1rem !important;
+    padding: 0.5rem 1rem !important;
   }
 
   .modal-body {
-    padding: 0.75rem 1rem !important;
-    gap: 0.65rem !important;
+    padding: 0.65rem 1rem !important;
+    gap: 0.55rem !important;
+  }
+
+  .modal-dialog .form-textarea {
+    min-height: 60px;
   }
 
   .card-type-selector-box {
-    padding: 0.45rem 0.65rem !important;
-    margin-bottom: 0.1rem !important;
+    padding: 0.4rem 0.6rem !important;
+    margin-bottom: 0.05rem !important;
   }
 
   .card-type-select {
-    padding: 0.38rem 0.55rem !important;
+    padding: 0.35rem 0.5rem !important;
     font-size: 0.82rem !important;
   }
 
   .form-group-collapsible .collapsible-header {
-    padding: 0.42rem 0.65rem !important;
+    padding: 0.38rem 0.6rem !important;
     font-size: 0.8rem !important;
   }
 }
