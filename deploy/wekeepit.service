@@ -1,0 +1,27 @@
+[Unit]
+Description=WeKeepIt Collaborative Workspace & Document Vault
+After=network.target
+
+[Service]
+Type=simple
+User=wekeepit
+Group=wekeepit
+WorkingDirectory=/opt/wekeepit
+Environment=NODE_ENV=production
+Environment=PORT=4321
+Environment=HOST=0.0.0.0
+Environment=ALLOW_REMOTE_HOST=true
+Environment=AUTH_ENABLED=true
+Environment=DATA_FILE_PATH=/var/lib/wekeepit/wekeepit-data.json
+Environment=SCHEMA_FILE_PATH=/var/lib/wekeepit/metadata-schema.json
+Environment=USERS_FILE_PATH=/var/lib/wekeepit/users.json
+Environment=INDEX_DB_PATH=/var/lib/wekeepit/index.db
+ExecStart=/usr/bin/node /opt/wekeepit/server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

@@ -8,6 +8,19 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 ## [2.4.0] - 2026-11-26
 
 ### Ditambahkan (Added)
+- **Arsitektur Multi-User Role & Adaptive RBAC (Admin, Editor, Viewer)**: Dukungan multi-pengguna adaptif untuk transisi deployment dari desktop Windows lokal ke server Linux terpusat (RHEL / Rocky / Ubuntu / Docker).
+  - **Mode Desktop Bebas Hambatan (Zero-Friction)**: Saat berjalan secara lokal pada Windows (`AUTH_ENABLED=false` bawaan), aplikasi tidak meminta kredensial apa pun dan langsung dapat digunakan sebagai pemilik tunggal secara mulus.
+  - **Mode Server Terautentikasi (`AUTH_ENABLED=true`)**: Mengaktifkan modal login modern bertema dark acrylic, manajemen token sesi aman berbasis cookie HTTP-Only, dan pemetaan peran pengguna (*Role-Based Access Control*):
+    - `Admin`: Akses penuh mencakup mutasi kartu, skema metadata, indexing folder dokumen, dan manajemen akun pengguna.
+    - `Editor`: Hak baca, tambah, dan edit catatan, alur kerja Kanban, checklist, dan komentar.
+    - `Viewer`: Mode pratinjau baca-saja (*read-only*), memblokir mutasi penambahan/pengubahan data, menonaktifkan aksi drag-and-drop, dan menampilkan banner pratinjau di bagian atas halaman.
+  - **Kriptografi Password Standar Native**: Menggunakan algoritma hash PBKDF2 dengan salt 16-byte (100.000 iterasi SHA-512) dari pustaka inti Node.js (`crypto`), tanpa ketergantungan library eksternal C++ yang rentan gagal kompilasi pada server Linux.
+  - **Akun Bawaan Siap Pakai**: Otomatis menginisialisasi akun `admin` (admin123), `editor` (editor123), dan `viewer` (viewer123) saat pertama kali server dijalankan.
+- **Paket Konfigurasi Deployment Server RHEL / Linux (`deploy/`)**:
+  - `deploy/wekeepit.service`: Unit file Systemd untuk manajemen service otomatis, restart on-failure, dan isolasi pengguna `wekeepit`.
+  - `deploy/nginx-wekeepit.conf`: Template reverse proxy Nginx siap pakai dengan konfigurasi WebSocket, buffering, dan limit body file besar (50MB).
+  - `deploy/.env.example`: Contoh konfigurasi environment variabel produksi server.
+  - `deploy/README-SERVER-DEPLOYMENT.md`: Dokumentasi panduan komprehensif deployment dari instalasi Node.js, kompilasi C++ SQLite, firewalld, hingga konfigurasi SELinux di RHEL.
 - **Table / Database View (Notion-Style Spreadsheet)**: Sudut pandang ke-4 pada alur kerja (`📑 Tabel`) berbentuk tabel data padat dengan kolom *Judul Tugas*, *Status*, *Prioritas*, *Tenggat / Waktu*, *Checklist*, *Tags*, dan *Aksi*. Dilengkapi pengurutan interaktif (klik header untuk sortir naik/turun dengan indikator ▲/▼) serta filter pencarian instan pada tabel.
 - **Kotak Arsip & Sampah (Soft Delete & Restore)**: Mencegah kehilangan data catatan penting akibat klik hapus tidak sengaja. Klik tombol 🗑️ kini memindahkan kartu secara aman ke Kotak Arsip & Sampah (`archived: true`). Pengguna dapat membuka modal `📦 Arsip` melalui tombol header untuk memulihkan kartu (*Restore*), menghapus secara permanen, atau mengosongkan semua sampah (*Empty Trash*).
 - **Indikator Prioritas First-Class (Trello/Notion Style)**: Menambahkan tingkat prioritas visual (`🔥 Urgent / P0`, `⚡ High / P1`, `📌 Medium / P2`, `☕ Low / P3`) dengan badge berkode warna di header kartu, penanda garis aksen 3.5px di sisi kiri kartu, indikator pada sidebar Timeline Gantt, dan chip Kalender.

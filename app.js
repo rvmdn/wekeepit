@@ -319,10 +319,171 @@
     }
   }
 
+  // --- AUTHENTICATION & RBAC STATE (V2.4.0) ---
+  let currentUser = null;
+  let authEnabled = false;
+
+  async function checkAuthStatus() {
+    try {
+      const res = await fetch(apiUrl('/api/auth/me'), { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        authEnabled = Boolean(data.authEnabled);
+        if (authEnabled) {
+          if (data.authenticated && data.user) {
+            currentUser = data.user;
+            applyUserSession(currentUser, true);
+            hideAuthModal();
+            return true;
+          } else {
+            currentUser = null;
+            applyUserSession(null, false);
+            showAuthModal();
+            return false;
+          }
+        } else {
+          // Desktop mode: zero-friction
+          currentUser = data.user || { role: 'admin', username: 'local-owner', displayName: 'Pemilik Lokal' };
+          applyUserSession(currentUser, false);
+          hideAuthModal();
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('Auth check error (offline fallback):', e);
+    }
+    return true;
+  }
+
+  function applyUserSession(user, showPill = true) {
+    const pill = document.getElementById('authUserPill');
+    const roleBadge = document.getElementById('authUserRoleBadge');
+    const nameEl = document.getElementById('authUserName');
+    const banner = document.getElementById('viewerBanner');
+
+    document.body.classList.remove('role-admin', 'role-editor', 'role-viewer');
+
+    if (!user) {
+      if (pill) pill.style.display = 'none';
+      if (banner) banner.style.display = 'none';
+      return;
+    }
+
+    const role = (user.role || 'viewer').toLowerCase();
+    document.body.classList.add(`role-${role}`);
+
+    if (pill) {
+      if (showPill && authEnabled) {
+        pill.style.display = 'inline-flex';
+        if (roleBadge) {
+          roleBadge.textContent = role === 'admin' ? 'Admin' : (role === 'editor' ? 'Editor' : 'Viewer');
+          roleBadge.className = `auth-role-badge role-${role}`;
+        }
+        if (nameEl) {
+          nameEl.textContent = user.displayName || user.username || 'Pengguna';
+        }
+      } else {
+        pill.style.display = 'none';
+      }
+    }
+
+    if (banner) {
+      banner.style.display = (authEnabled && role === 'viewer') ? 'flex' : 'none';
+    }
+  }
+
+  function showAuthModal() {
+    const modal = document.getElementById('authLoginModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      const userInput = document.getElementById('loginUsername');
+      if (userInput) setTimeout(() => userInput.focus(), 100);
+    }
+  }
+
+  function hideAuthModal() {
+    const modal = document.getElementById('authLoginModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+    const alertBox = document.getElementById('authLoginAlert');
+    if (alertBox) {
+      alertBox.style.display = 'none';
+      alertBox.textContent = '';
+    }
+  }
+
+  async function handleLogin(e) {
+    if (e) e.preventDefault();
+    const userInput = document.getElementById('loginUsername');
+    const passInput = document.getElementById('loginPassword');
+    const alertBox = document.getElementById('authLoginAlert');
+    const submitBtn = document.getElementById('btnLoginSubmit');
+
+    const username = (userInput ? userInput.value : '').trim();
+    const password = passInput ? passInput.value : '';
+
+    if (!username || !password) {
+      if (alertBox) {
+        alertBox.textContent = 'Harap masukkan username dan password.';
+        alertBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Memverifikasi...';
+    }
+
+    try {
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        currentUser = data.user;
+        applyUserSession(currentUser, true);
+        hideAuthModal();
+        if (passInput) passInput.value = '';
+        await loadCards();
+        renderAll();
+      } else {
+        if (alertBox) {
+          alertBox.textContent = data.error || 'Username atau password salah.';
+          alertBox.style.display = 'block';
+        }
+      }
+    } catch (err) {
+      if (alertBox) {
+        alertBox.textContent = 'Gagal terhubung ke server autentikasi: ' + err.message;
+        alertBox.style.display = 'block';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>Masuk Sekarang ➔</span>';
+      }
+    }
+  }
+
+  async function handleLogout() {
+    if (!confirm('Apakah Anda yakin ingin keluar dari akun ini?')) return;
+    try {
+      await fetch(apiUrl('/api/auth/logout'), { method: 'POST' });
+    } catch {}
+    currentUser = null;
+    applyUserSession(null, false);
+    showAuthModal();
+  }
+
   // --- INITIALIZATION ---
   async function init() {
     setupNativeBridge();
     setupEventListeners();
+    await checkAuthStatus();
     await checkServer();
     await loadSchema();
     await loadCards();
@@ -490,11 +651,16 @@
     // Node Server API
     if (isServerAvailable) {
       try {
-        await fetch(apiUrl('/api/cards'), {
+        const res = await fetch(apiUrl('/api/cards'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cards)
         });
+        if (res.status === 401 && authEnabled) {
+          showAuthModal();
+        } else if (res.status === 403) {
+          alert('Aksi ditolak: Peran akun Anda (Viewer) tidak memiliki izin mengubah data kartu.');
+        }
       } catch (err) {
         console.warn('Gagal sinkron ke server:', err);
       }
@@ -580,6 +746,16 @@
 
   // --- EVENT LISTENERS ---
   function setupEventListeners() {
+    // Auth login & logout
+    const loginForm = document.getElementById('authLoginForm');
+    if (loginForm) {
+      loginForm.addEventListener('submit', handleLogin);
+    }
+    const logoutBtn = document.getElementById('btnLogout');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', handleLogout);
+    }
+
     // V2 Domain navigation tabs
     document.querySelectorAll('.domain-tab').forEach(tab => {
       tab.addEventListener('click', () => {

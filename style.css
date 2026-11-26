@@ -5031,3 +5031,134 @@ body.font-mono * {
   color: var(--text-muted);
   font-style: italic;
 }
+
+/* ==========================================================================
+   AUTH & ROLE-BASED ACCESS CONTROL (RBAC) STYLING (V2.4.0)
+   ========================================================================== */
+
+/* User Header Pill */
+.auth-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-role-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.04em;
+}
+
+.auth-role-badge.role-admin {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
+.auth-role-badge.role-editor {
+  background: rgba(14, 165, 233, 0.18);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.35);
+}
+
+.auth-role-badge.role-viewer {
+  background: rgba(148, 163, 184, 0.18);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.auth-user-name {
+  font-weight: 600;
+  color: var(--text-primary);
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-logout {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+  border-radius: var(--radius-sm);
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.btn-logout:hover {
+  opacity: 1;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* Viewer Banner */
+.viewer-banner {
+  background: rgba(14, 165, 233, 0.12);
+  border-bottom: 1px solid rgba(14, 165, 233, 0.28);
+  color: #38bdf8;
+  padding: 8px 1.5rem;
+  font-size: 0.82rem;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Modal Auth Dialog */
+.modal-auth-dialog {
+  max-width: 440px !important;
+  width: 90% !important;
+}
+
+.auth-login-alert {
+  padding: 8px 12px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius-md);
+  color: #f87171;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.auth-demo-hint {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+}
+
+/* Role-Viewer Restrictions (Read-Only Mode) */
+body.role-viewer #newCardBtn,
+body.role-viewer #btnKanbanNewTask,
+body.role-viewer #tableNewTaskBtn,
+body.role-viewer #addFolderBtn,
+body.role-viewer #manageSchemaBtn,
+body.role-viewer #emptyArchiveBtn,
+body.role-viewer .card-action-btn.edit-btn,
+body.role-viewer .card-action-btn.delete-btn,
+body.role-viewer .card-action-btn.btn-card-edit,
+body.role-viewer .card-action-btn.btn-card-delete,
+body.role-viewer .archive-item-actions {
+  display: none !important;
+}
+
+body.role-viewer .checklist-checkbox {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+body.role-viewer .kanban-card {
+  cursor: default !important;
+}
+

@@ -1,5 +1,6 @@
 # Sensitive User Data & Personal Notes
 wekeepit-data.json
+users.json
 wekeepit-index.db*
 node_modules/
 save_error.log

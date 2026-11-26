@@ -8,6 +8,7 @@ const { FolderManager } = require('./indexer/folder-manager.js');
 const DocumentIndexer = require('./indexer/document-indexer.js');
 const SearchEngine = require('./indexer/search-engine.js');
 const MetadataEngine = require('./metadata-engine.js');
+const { AuthManager, PERMISSIONS, ROLES } = require('./auth.js');
 
 const PORT = process.env.PORT !== undefined ? Number(process.env.PORT) : 4321;
 
@@ -21,6 +22,9 @@ function isLoopbackHost(host) {
 }
 
 function resolveLoopbackHost(candidate, strict = false) {
+  if (process.env.ALLOW_REMOTE_HOST === 'true' && candidate) {
+    return candidate;
+  }
   if (isLoopbackHost(candidate)) {
     const clean = candidate.trim().toLowerCase();
     // Prioritize 127.0.0.1 for desktop app reliability unless IPv6 loopback is explicitly requested
@@ -175,6 +179,10 @@ function createServerApp(options = {}) {
   const documentIndexer = options.documentIndexer || new DocumentIndexer(db, folderManager);
   const searchEngine = options.searchEngine || new SearchEngine(db);
   const metaEngine = options.metaEngine || new MetadataEngine();
+  const authManager = options.authManager || new AuthManager({
+    usersFile: options.usersFile,
+    authEnabled: options.authEnabled !== undefined ? options.authEnabled : (process.env.AUTH_ENABLED === 'true' || process.env.AUTH_ENABLED === '1')
+  });
   const dataFile = options.dataFile || process.env.DATA_FILE_PATH || DATA_FILE;
   const schemaFile = options.schemaFile || process.env.SCHEMA_FILE_PATH || SCHEMA_FILE;
   const launcher = options.launchTarget || launchTarget;
@@ -201,7 +209,7 @@ function createServerApp(options = {}) {
   const server = http.createServer(async (req, res) => {
     // 1. Host Header Validation (Prevent DNS Rebinding attacks)
     const host = req.headers.host || '';
-    const isHostValid = !host || /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host);
+    const isHostValid = !host || /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host) || (process.env.ALLOW_REMOTE_HOST === 'true');
     if (!isHostValid) {
       res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('403 Forbidden: Host header tidak diizinkan');
@@ -255,6 +263,160 @@ function createServerApp(options = {}) {
     const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = reqUrl.pathname;
 
+    // Authentication & Session Context
+    const authUser = authManager.authenticateRequest(req);
+
+    // --- Authentication & Session API ---
+    if (pathname === '/api/auth/config') {
+      sendJson(res, 200, {
+        authEnabled: authManager.isAuthEnabled()
+      });
+      return;
+    }
+
+    if (pathname === '/api/auth/me') {
+      if (!authManager.isAuthEnabled()) {
+        sendJson(res, 200, {
+          authenticated: true,
+          authEnabled: false,
+          user: { username: 'local-owner', role: ROLES.ADMIN, displayName: 'Local Owner' }
+        });
+        return;
+      }
+
+      if (authUser) {
+        sendJson(res, 200, {
+          authenticated: true,
+          authEnabled: true,
+          user: {
+            username: authUser.username,
+            role: authUser.role,
+            displayName: authUser.displayName
+          }
+        });
+      } else {
+        sendJson(res, 200, {
+          authenticated: false,
+          authEnabled: true,
+          user: null
+        });
+      }
+      return;
+    }
+
+    if (pathname === '/api/auth/login') {
+      if (req.method === 'POST') {
+        try {
+          const body = await parseBody(req);
+          const { username, password } = body;
+          const result = authManager.login(username, password);
+          if (!result.success) {
+            sendJson(res, 401, { error: result.error });
+            return;
+          }
+
+          res.setHeader('Set-Cookie', `wekeepit_token=${result.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`);
+          sendJson(res, 200, {
+            success: true,
+            token: result.token,
+            user: result.user
+          });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    if (pathname === '/api/auth/logout') {
+      if (req.method === 'POST') {
+        const token = authManager.extractToken(req);
+        if (token) {
+          authManager.logout(token);
+        }
+        res.setHeader('Set-Cookie', 'wekeepit_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+        sendJson(res, 200, { success: true });
+        return;
+      }
+    }
+
+    // User management (Admin only)
+    if (pathname === '/api/auth/users') {
+      if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.MANAGE_USERS))) {
+        sendJson(res, 403, { error: '403 Forbidden: Hanya Administrator yang dapat mengelola pengguna.' });
+        return;
+      }
+
+      if (req.method === 'GET') {
+        sendJson(res, 200, authManager.listUsers());
+        return;
+      }
+
+      if (req.method === 'POST') {
+        try {
+          const body = await parseBody(req);
+          const newUser = authManager.createUser(body);
+          sendJson(res, 201, { success: true, user: newUser });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    if (pathname.startsWith('/api/auth/users/')) {
+      if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.MANAGE_USERS))) {
+        sendJson(res, 403, { error: '403 Forbidden: Hanya Administrator yang dapat mengelola pengguna.' });
+        return;
+      }
+
+      const targetUsername = decodeURIComponent(pathname.substring('/api/auth/users/'.length));
+
+      if (req.method === 'PUT') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
+          return;
+        }
+        try {
+          const body = await parseBody(req);
+          const updated = authManager.updateUser(targetUsername, body);
+          sendJson(res, 200, { success: true, user: updated });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+
+      if (req.method === 'DELETE') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
+          return;
+        }
+        try {
+          authManager.deleteUser(targetUsername, authUser ? authUser.username : null);
+          sendJson(res, 200, { success: true });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    // Gate all other /api/* endpoints when authentication is enabled:
+    if (pathname.startsWith('/api/') && pathname !== '/api/ping') {
+      if (authManager.isAuthEnabled() && !authUser) {
+        sendJson(res, 401, {
+          error: '401 Unauthorized: Otentikasi diperlukan. Silakan login terlebih dahulu.',
+          authRequired: true
+        });
+        return;
+      }
+    }
+
     // --- API V1 Endpoints (Preserved 100%) ---
     if (pathname === '/api/cards') {
       if (req.method === 'GET') {
@@ -264,6 +426,10 @@ function createServerApp(options = {}) {
       }
 
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.WRITE_CARDS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda (Viewer) tidak memiliki izin menambah atau mengubah kartu.' });
+          return;
+        }
         try {
           const cards = await parseBody(req);
           if (Array.isArray(cards)) {
@@ -287,6 +453,10 @@ function createServerApp(options = {}) {
       }
 
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.WRITE_SCHEMA)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin memodifikasi skema metadata.' });
+          return;
+        }
         try {
           const schema = await parseBody(req);
           writeJsonFile(schemaFile, schema);
@@ -366,6 +536,10 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
       }
 
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
+          return;
+        }
         try {
           const payload = await parseBody(req);
           const folder = folderManager.addFolder(payload.path, payload);
@@ -388,6 +562,10 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
       }
 
       if (req.method === 'PUT') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
+          return;
+        }
         try {
           const payload = await parseBody(req);
           const id = payload.id || reqUrl.searchParams.get('id');
@@ -408,6 +586,10 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
       }
 
       if (req.method === 'DELETE') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
+          return;
+        }
         try {
           const id = reqUrl.searchParams.get('id');
           if (!id) throw new Error('ID folder wajib disertakan');
@@ -431,6 +613,10 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
 
     if (pathname === '/api/indexer/scan') {
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_INDEXER)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin memicu indexing dokumen.' });
+          return;
+        }
         try {
           const payload = await parseBody(req);
           const folderId = payload.folderId;
@@ -460,6 +646,10 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
 
     if (pathname === '/api/indexer/cancel') {
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_INDEXER)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin menghentikan proses indexing.' });
+          return;
+        }
         const cancelled = documentIndexer.cancel();
         sendJson(res, 200, { cancelled });
         return;
@@ -518,6 +708,10 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     // Native Open File or Show in Folder (Temuan 3: Strict security boundaries)
     if (pathname === '/api/open-file') {
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.OPEN_FILES)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin membuka berkas pada sistem host.' });
+          return;
+        }
         try {
           const payload = await parseBody(req);
           const folderOnly = Boolean(payload.folderOnly);
@@ -887,6 +1081,7 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     documentIndexer,
     searchEngine,
     metaEngine,
+    authManager,
     initWatchers,
     close,
     get isClosed() { return isClosed; }
@@ -945,6 +1140,12 @@ module.exports = {
   get searchEngine() {
     return getDefaultApp().searchEngine;
   },
+  get authManager() {
+    return getDefaultApp().authManager;
+  },
+  AuthManager,
+  ROLES,
+  PERMISSIONS,
   initWatchers: () => {
     return getDefaultApp().initWatchers();
   },
