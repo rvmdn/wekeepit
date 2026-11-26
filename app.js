@@ -78,6 +78,20 @@
   const pinnedBadge = document.getElementById('pinnedBadge');
   const cardsBadge = document.getElementById('cardsBadge');
 
+  // Kanban DOM Elements & Schema
+  const kanbanSection = document.getElementById('kanbanSection');
+  const kanbanBoardContainer = document.getElementById('kanbanBoardContainer');
+  const kanbanModeBtn = document.getElementById('kanbanModeBtn');
+  const formStatus = document.getElementById('formStatus');
+
+  const KANBAN_COLUMNS = [
+    { id: 'backlog', label: 'Backlog', icon: '📥', color: '#64748b' },
+    { id: 'todo', label: 'To Do', icon: '📋', color: '#f59e0b' },
+    { id: 'in_progress', label: 'In Progress', icon: '⚡', color: '#3b82f6' },
+    { id: 'review', label: 'Review', icon: '🔍', color: '#8b5cf6' },
+    { id: 'done', label: 'Selesai', icon: '✅', color: '#10b981' }
+  ];
+
   // V2 Domain & Navigation DOM Elements
   const tabDomainBoard = document.getElementById('tabDomainBoard');
   const tabDomainDocs = document.getElementById('tabDomainDocs');
@@ -645,16 +659,26 @@
           cardsGrid.classList.add('free-canvas');
           pinnedGrid.classList.add('free-canvas');
           if (tidyUpBtn) tidyUpBtn.style.display = 'inline-flex';
+          if (kanbanSection) kanbanSection.style.display = 'none';
         } else if (currentDensity === 'compact') {
           cardsGrid.classList.remove('free-canvas');
           pinnedGrid.classList.remove('free-canvas');
           cardsGrid.classList.add('compact');
           pinnedGrid.classList.add('compact');
           if (tidyUpBtn) tidyUpBtn.style.display = 'none';
+          if (kanbanSection) kanbanSection.style.display = 'none';
+        } else if (currentDensity === 'kanban') {
+          cardsGrid.classList.remove('free-canvas', 'compact');
+          pinnedGrid.classList.remove('free-canvas', 'compact');
+          if (tidyUpBtn) tidyUpBtn.style.display = 'none';
+          pinnedSection.style.display = 'none';
+          cardsSection.style.display = 'none';
+          if (kanbanSection) kanbanSection.style.display = 'block';
         } else {
           cardsGrid.classList.remove('free-canvas', 'compact');
           pinnedGrid.classList.remove('free-canvas', 'compact');
           if (tidyUpBtn) tidyUpBtn.style.display = 'none';
+          if (kanbanSection) kanbanSection.style.display = 'none';
         }
 
         renderAll();
@@ -1775,6 +1799,18 @@
 
     const cardsSectionHeader = document.getElementById('cardsSectionHeader');
 
+    // Kanban View Branch
+    if (currentDensity === 'kanban') {
+      pinnedSection.style.display = 'none';
+      cardsSection.style.display = 'none';
+      if (cardsSectionHeader) cardsSectionHeader.style.display = 'none';
+      if (tidyUpBtn) tidyUpBtn.style.display = 'none';
+      renderKanbanView(filtered);
+      return;
+    } else {
+      if (kanbanSection) kanbanSection.style.display = 'none';
+    }
+
     // Separate pinned cards if in 'all' tab
     if (currentTab === 'all' && parsedQuery.isEmpty) {
       const pinnedCards = filtered.filter(c => c.pinned);
@@ -1852,6 +1888,111 @@
     } else {
       container.style.minHeight = '';
     }
+  }
+
+  function renderKanbanView(filteredCards) {
+    if (!kanbanBoardContainer) return;
+    kanbanBoardContainer.innerHTML = '';
+
+    if (filteredCards.length === 0 && cards.length === 0) {
+      emptyState.style.display = 'flex';
+      if (kanbanSection) kanbanSection.style.display = 'none';
+      return;
+    } else {
+      emptyState.style.display = 'none';
+      if (kanbanSection) kanbanSection.style.display = 'block';
+    }
+
+    KANBAN_COLUMNS.forEach(col => {
+      const colCards = filteredCards.filter(c => {
+        const s = c.status || 'todo';
+        return s === col.id;
+      });
+
+      const colEl = document.createElement('div');
+      colEl.className = `kanban-column kanban-col-${col.id}`;
+      colEl.setAttribute('data-status', col.id);
+
+      // Column Header
+      const headerEl = document.createElement('div');
+      headerEl.className = 'kanban-column-header';
+      headerEl.innerHTML = `
+        <div class="kanban-col-title-group">
+          <span class="kanban-col-icon">${col.icon}</span>
+          <h3 class="kanban-col-title">${escapeHtml(col.label)}</h3>
+          <span class="kanban-col-badge">${colCards.length}</span>
+        </div>
+        <button type="button" class="kanban-add-card-btn" title="Tambah kartu baru ke status ${escapeHtml(col.label)}" data-status="${col.id}">＋</button>
+      `;
+
+      headerEl.querySelector('.kanban-add-card-btn').addEventListener('click', () => {
+        openCardModal(null, col.id);
+      });
+
+      // Column Body (Cards & Drop zone)
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'kanban-column-body';
+      bodyEl.setAttribute('data-status', col.id);
+
+      // Drag and drop listeners for column body
+      bodyEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        bodyEl.classList.add('kanban-drop-target');
+      });
+
+      bodyEl.addEventListener('dragleave', (e) => {
+        if (!bodyEl.contains(e.relatedTarget)) {
+          bodyEl.classList.remove('kanban-drop-target');
+        }
+      });
+
+      bodyEl.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        bodyEl.classList.remove('kanban-drop-target');
+        const cardId = e.dataTransfer.getData('text/plain');
+        if (!cardId) return;
+
+        const targetCard = cards.find(c => String(c.id) === String(cardId));
+        if (targetCard && (targetCard.status || 'todo') !== col.id) {
+          targetCard.status = col.id;
+          targetCard.updatedAt = new Date().toISOString();
+          await saveCards();
+          renderCards();
+          alertToast(`Kartu "${targetCard.title || 'Catatan'}" dipindah ke ${col.label}`);
+        }
+      });
+
+      if (colCards.length === 0) {
+        const emptyDrop = document.createElement('div');
+        emptyDrop.className = 'kanban-empty-drop-hint';
+        emptyDrop.innerHTML = `<span>Tarik kartu ke sini</span>`;
+        bodyEl.appendChild(emptyDrop);
+      } else {
+        colCards.forEach(card => {
+          const cardEl = createCardElement(card);
+          cardEl.classList.add('kanban-card');
+          cardEl.setAttribute('draggable', 'true');
+
+          cardEl.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', String(card.id));
+            e.dataTransfer.effectAllowed = 'move';
+            cardEl.classList.add('kanban-card-dragging');
+          });
+
+          cardEl.addEventListener('dragend', () => {
+            cardEl.classList.remove('kanban-card-dragging');
+            document.querySelectorAll('.kanban-column-body').forEach(b => b.classList.remove('kanban-drop-target'));
+          });
+
+          bodyEl.appendChild(cardEl);
+        });
+      }
+
+      colEl.appendChild(headerEl);
+      colEl.appendChild(bodyEl);
+      kanbanBoardContainer.appendChild(colEl);
+    });
   }
 
   function setupFreeCardPosition(cardEl, card, index, container) {
@@ -2043,12 +2184,18 @@
     cardEl.setAttribute('data-id', card.id || '');
     cardEl.style.setProperty('--card-color', card.color || '#6366f1');
 
+    const cardStatus = card.status || 'todo';
+    const statusDef = KANBAN_COLUMNS.find(c => c.id === cardStatus) || KANBAN_COLUMNS[1];
+
     // Header
     const headerEl = document.createElement('div');
     headerEl.className = 'card-header';
     headerEl.innerHTML = `
-      <div class="card-title-group" style="display: flex; align-items: center;">
+      <div class="card-title-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <span class="card-drag-indicator" title="Geser kartu">⠿</span>
+        <span class="card-status-badge status-${cardStatus}" title="Status: ${statusDef.label}">
+          ${statusDef.icon} ${statusDef.label}
+        </span>
         <h3 class="card-title">${escapeHtml(card.title || 'Tanpa Judul')}</h3>
       </div>
       <div class="card-actions">
@@ -2431,7 +2578,7 @@
     }
   }
 
-  function openCardModal(card = null) {
+  function openCardModal(card = null, defaultStatus = 'todo') {
     cardForm.reset();
     editingChecklist = [];
     editingAttachments = [];
@@ -2446,6 +2593,14 @@
 
     // Populate schema fields into container
     renderMetadataFormFields(card ? card.metadata : {});
+
+    if (formStatus) {
+      if (card) {
+        formStatus.value = card.status || 'todo';
+      } else {
+        formStatus.value = defaultStatus || 'todo';
+      }
+    }
 
     if (card) {
       cardModalTitle.textContent = 'Edit Catatan';
@@ -2681,9 +2836,11 @@
       };
     }
 
+    const existingCard = cards.find(c => c.id === id);
     const cardPayload = {
       id,
       title,
+      status: formStatus ? formStatus.value : (existingCard ? (existingCard.status || 'todo') : 'todo'),
       content: formContent.value.trim(),
       color: selectedColor,
       pinned: formPinned.checked,

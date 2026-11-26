@@ -4116,3 +4116,198 @@ body.font-mono * {
   border: 1px solid rgba(56, 189, 248, 0.18) !important;
   box-shadow: 0 4px 16px rgba(2, 10, 24, 0.35) !important;
 }
+
+/* ==========================================================================
+   Kanban Board View (Alur Kerja Status Kolom & Drag-Drop)
+   ========================================================================== */
+
+.kanban-section {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 1.25rem;
+  scrollbar-width: thin;
+}
+
+.kanban-board-container {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  min-width: min-content;
+  padding: 0.5rem 0.25rem 1rem 0.25rem;
+}
+
+.kanban-column {
+  flex: 0 0 310px;
+  width: 310px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 210px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.kanban-column-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border-subtle);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+}
+
+.kanban-col-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kanban-col-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.kanban-col-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.kanban-col-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.kanban-add-card-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  font-weight: 600;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.kanban-add-card-btn:hover {
+  background: var(--bg-active);
+  color: var(--accent-primary);
+  border-color: var(--border-subtle);
+}
+
+.kanban-column-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 160px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  transition: background 0.15s ease, outline 0.15s ease;
+  scrollbar-width: thin;
+}
+
+.kanban-column-body.kanban-drop-target {
+  background: rgba(99, 102, 241, 0.08) !important;
+  outline: 2px dashed var(--accent-primary) !important;
+  outline-offset: -3px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.kanban-empty-drop-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 90px;
+  border: 2px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+  font-style: italic;
+  pointer-events: none;
+}
+
+.kanban-card {
+  width: 100% !important;
+  position: static !important;
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.kanban-card.kanban-card-dragging {
+  opacity: 0.45;
+  transform: scale(0.97);
+  cursor: grabbing !important;
+}
+
+/* Card Status Badge */
+.card-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.card-status-badge.status-backlog {
+  border-color: rgba(100, 116, 139, 0.4);
+  background: rgba(100, 116, 139, 0.12);
+  color: #94a3b8;
+}
+
+.card-status-badge.status-todo {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.card-status-badge.status-in_progress {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.12);
+  color: #60a5fa;
+}
+
+.card-status-badge.status-review {
+  border-color: rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+}
+
+.card-status-badge.status-done {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
