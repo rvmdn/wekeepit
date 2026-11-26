@@ -468,9 +468,9 @@
             </div>
           </div>
 
-          <!-- Status Alur Kerja (Hanya tampil jika Kanban Flow dipilih) -->
-          <div class="form-row" id="formStatusRow" style="display: none; gap: 12px; margin-bottom: 12px;">
-            <div class="form-group flex-1">
+          <!-- Status Alur Kerja & Prioritas (Trello/Notion First-Class Attributes) -->
+          <div class="form-row" style="gap: 12px; margin-bottom: 12px;">
+            <div class="form-group flex-1" id="formStatusRow" style="display: none;">
               <label for="formStatus" class="form-label">📊 Status Alur Kerja</label>
               <select id="formStatus" class="form-select">
                 <option value="backlog">📥 Backlog</option>
@@ -478,6 +478,16 @@
                 <option value="in_progress">⚡ In Progress</option>
                 <option value="review">🔍 Review</option>
                 <option value="done">✅ Selesai</option>
+              </select>
+            </div>
+            <div class="form-group flex-1" id="formPriorityRow">
+              <label for="formPriority" class="form-label">🔥 Tingkat Prioritas</label>
+              <select id="formPriority" class="form-select">
+                <option value="">-- Normal / Tanpa Prioritas --</option>
+                <option value="Urgent">🔥 Urgent / Kritis (P0)</option>
+                <option value="High">⚡ High / Tinggi (P1)</option>
+                <option value="Medium">📌 Medium / Sedang (P2)</option>
+                <option value="Low">☕ Low / Rendah (P3)</option>
               </select>
             </div>
           </div>

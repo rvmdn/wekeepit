@@ -91,6 +91,26 @@
   const targetBoardKanbanBtn = document.getElementById('targetBoardKanbanBtn');
   const formStatusRow = document.getElementById('formStatusRow');
   const formStatus = document.getElementById('formStatus');
+  const formPriority = document.getElementById('formPriority');
+
+  const PRIORITY_LEVELS = {
+    urgent: { id: 'urgent', key: 'Urgent', label: '🔥 Urgent (P0)', shortLabel: '🔥 Urgent', color: '#ef4444' },
+    high: { id: 'high', key: 'High', label: '⚡ High (P1)', shortLabel: '⚡ High', color: '#f97316' },
+    medium: { id: 'medium', key: 'Medium', label: '📌 Medium (P2)', shortLabel: '📌 Medium', color: '#f59e0b' },
+    low: { id: 'low', key: 'Low', label: '☕ Low (P3)', shortLabel: '☕ Low', color: '#94a3b8' }
+  };
+
+  function getCardPriority(card) {
+    if (!card) return null;
+    const raw = card.priority || (card.metadata && (card.metadata.priority || card.metadata.prioritas));
+    if (!raw) return null;
+    const str = String(raw).trim().toLowerCase();
+    if (/urgent|critical|kritis|p0/i.test(str)) return PRIORITY_LEVELS.urgent;
+    if (/high|tinggi|p1/i.test(str)) return PRIORITY_LEVELS.high;
+    if (/medium|sedang|p2/i.test(str)) return PRIORITY_LEVELS.medium;
+    if (/low|rendah|p3/i.test(str)) return PRIORITY_LEVELS.low;
+    return null;
+  }
 
   // Workflow Sub-Views State & Elements (Kanban / Timeline / Calendar)
   let currentWorkflowView = 'kanban'; // 'kanban', 'timeline', 'calendar'
@@ -2186,12 +2206,16 @@
     } else {
       filteredTasks.forEach(task => {
         const colDef = KANBAN_COLUMNS.find(c => c.id === task.status) || KANBAN_COLUMNS[1];
+        const pInfo = getCardPriority(task);
 
         // Sidebar row
         const rowSidebar = document.createElement('div');
         rowSidebar.className = 'gantt-sidebar-row';
         rowSidebar.innerHTML = `
-          <span class="gantt-task-name" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>
+          <div style="display:flex; align-items:center; gap:6px; min-width:0; overflow:hidden;">
+            ${pInfo ? `<span class="card-priority-badge priority-${pInfo.id}" style="font-size:0.62rem; padding:1px 4px;">${pInfo.shortLabel}</span>` : ''}
+            <span class="gantt-task-name" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>
+          </div>
           <span class="card-status-badge status-${task.status}" style="font-size:0.65rem; padding:1px 6px;">
             ${colDef.icon} ${colDef.label}
           </span>
@@ -2342,12 +2366,16 @@
 
       tasksOnDate.slice(0, 3).forEach(task => {
         const colDef = KANBAN_COLUMNS.find(c => c.id === task.status) || KANBAN_COLUMNS[1];
+        const pInfo = getCardPriority(task);
         const chip = document.createElement('div');
         chip.className = `calendar-task-chip status-${task.status}`;
         chip.style.backgroundColor = 'var(--bg-hover)';
-        chip.style.borderColor = colDef.color;
-        chip.innerHTML = `<span>${colDef.icon}</span><span style="overflow:hidden;text-overflow:ellipsis;">${escapeHtml(task.title)}</span>`;
-        chip.title = `${task.title} (${colDef.label})`;
+        chip.style.borderColor = pInfo ? pInfo.color : colDef.color;
+        chip.innerHTML = `
+          ${pInfo ? `<span style="font-size:0.68rem;">${pInfo.shortLabel.split(' ')[0]}</span>` : `<span>${colDef.icon}</span>`}
+          <span style="overflow:hidden;text-overflow:ellipsis;">${escapeHtml(task.title)}</span>
+        `;
+        chip.title = `${task.title} (${colDef.label}${pInfo ? ' - ' + pInfo.label : ''})`;
         chip.addEventListener('click', (e) => {
           e.stopPropagation();
           openCardModal(task);
@@ -2564,6 +2592,10 @@
     const isTask = isKanbanTask(card);
     const cardStatus = card.status || 'todo';
     const statusDef = KANBAN_COLUMNS.find(c => c.id === cardStatus) || KANBAN_COLUMNS[1];
+    const priorityInfo = getCardPriority(card);
+    if (priorityInfo) {
+      cardEl.classList.add(`has-priority-${priorityInfo.id}`);
+    }
 
     // Header
     const headerEl = document.createElement('div');
@@ -2571,6 +2603,9 @@
     headerEl.innerHTML = `
       <div class="card-title-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <span class="card-drag-indicator" title="Geser kartu">⠿</span>
+        ${priorityInfo ? `<span class="card-priority-badge priority-${priorityInfo.id}" title="Prioritas: ${priorityInfo.label}">
+          ${priorityInfo.shortLabel}
+        </span>` : ''}
         ${isTask ? `<span class="card-status-badge status-${cardStatus}" title="Status: ${statusDef.label}">
           ${statusDef.icon} ${statusDef.label}
         </span>` : ''}
@@ -2678,6 +2713,8 @@
 
     for (const [key, val] of Object.entries(metadata)) {
       if (val === undefined || val === null || val === '') continue;
+      // Skip priority in metadata box since it's already a first-class header badge
+      if (key.toLowerCase() === 'priority' || key.toLowerCase() === 'prioritas') continue;
       const fieldDef = metaEngine.getFieldDefinition(key);
       const icon = fieldDef ? fieldDef.icon : '🏷️';
       const label = fieldDef ? fieldDef.label : key;
@@ -2724,18 +2761,21 @@
     const total = card.checklist.length;
     const completed = card.checklist.filter(c => c.done).length;
     const percentage = Math.round((completed / total) * 100);
+    const isComplete = (completed === total && total > 0);
 
     const box = document.createElement('div');
     box.className = 'card-checklist-box';
 
-    // Progress bar
+    // Progress bar (Trello/Notion visual progress)
     const progressWrap = document.createElement('div');
     progressWrap.className = 'checklist-progress-bar-wrap';
     progressWrap.innerHTML = `
       <div class="checklist-progress-track">
-        <div class="checklist-progress-fill" style="width: ${percentage}%"></div>
+        <div class="checklist-progress-fill ${isComplete ? 'is-complete' : ''}" style="width: ${percentage}%"></div>
       </div>
-      <span>${completed}/${total} (${percentage}%)</span>
+      <span class="checklist-progress-badge ${isComplete ? 'is-complete' : ''}">
+        ${isComplete ? '✅' : '☑️'} ${completed}/${total} (${percentage}%)
+      </span>
     `;
     box.appendChild(progressWrap);
 
@@ -3003,6 +3043,11 @@
       if (formDueDate) formDueDate.value = '';
     }
 
+    if (formPriority) {
+      const pInfo = card ? getCardPriority(card) : null;
+      formPriority.value = pInfo ? pInfo.key : '';
+    }
+
     if (card) {
       cardModalTitle.textContent = 'Edit Catatan';
       editCardId.value = card.id;
@@ -3239,12 +3284,21 @@
 
     const isKanban = targetBoardKanbanBtn && targetBoardKanbanBtn.classList.contains('active');
     const assignedStatus = isKanban ? (formStatus && formStatus.value ? formStatus.value : 'todo') : null;
+    const assignedPriority = (formPriority && formPriority.value) ? formPriority.value : null;
+
+    if (assignedPriority) {
+      metadata.priority = assignedPriority;
+    } else {
+      delete metadata.priority;
+      delete metadata.prioritas;
+    }
 
     const existingCard = cards.find(c => c.id === id);
     const cardPayload = {
       id,
       title,
       status: assignedStatus,
+      priority: assignedPriority,
       startDate: isKanban ? (formStartDate && formStartDate.value ? formStartDate.value : null) : null,
       dueDate: isKanban ? (formDueDate && formDueDate.value ? formDueDate.value : null) : null,
       content: formContent.value.trim(),

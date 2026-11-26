@@ -8,6 +8,9 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 ## [2.3.0] - 2026-11-26
 
 ### Ditambahkan (Added)
+- **Indikator Prioritas First-Class (Trello/Notion Style)**: Menambahkan tingkat prioritas visual (`🔥 Urgent / P0`, `⚡ High / P1`, `📌 Medium / P2`, `☕ Low / P3`) dengan badge berkode warna di header kartu, penanda garis aksen 3.5px di sisi kiri kartu, indikator pada sidebar Timeline Gantt, dan chip Kalender.
+- **Selector Prioritas Terintegrasi**: Dropdown pemilihan prioritas langsung di modal editor kartu untuk Catatan Notice Board maupun Tugas Kanban Flow, dengan sinkronisasi otomatis ke skema metadata tanpa duplikasi tampilan baris.
+- **Checklist Progress Bar Visual (Trello-Style)**: Bilah progres checklist modern dengan track 6px, transisi halus, badge persentase penyelesaian (`☑️ 3/5 (60%)`), dan indikator hijau emerald (`✅ 5/5`) saat semua item checklist rampung.
 - **Pemisahan Domain Notice Board & Kanban Flow**: Memisahkan secara tegas catatan referensi murni (`📌 Notice Board`) dari tugas alur kerja (`⚡ Kanban Flow`). Catatan referensi Notice Board tidak lagi tercampur atau dipaksa memiliki status `todo`.
 - **Kanban Board View (Notion-style)**: 5 swimlane status alur kerja (`Backlog`, `To Do`, `In Progress`, `Review`, `Done`) dengan interaksi drag-and-drop native HTML5 yang intuitif, sinkronisasi posisi otomatis, dan penghitung kartu per kolom.
 - **Timeline Gantt Chart View (`📊 Timeline`)**: Visualisasi rentang waktu pengerjaan tugas (`startDate` s.d. `dueDate`) dengan sliding window 14 hari, bilah horizontal interaktif berkode warna status, penanda hari ini (*today indicator*), serta tombol navigasi tanggal (*Hari Ini*, *Mundur*, *Maju*).

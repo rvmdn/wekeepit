@@ -953,22 +953,50 @@ body {
 .checklist-progress-bar-wrap {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.7rem;
-  color: var(--text-dim);
+  gap: 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .checklist-progress-track {
   flex: 1;
-  height: 3px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 99px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
   overflow: hidden;
+  position: relative;
 }
 
 .checklist-progress-fill {
   height: 100%;
-  background: var(--accent-emerald);
+  border-radius: 999px;
+  background: var(--accent-primary);
+  transition: width 0.25s ease, background-color 0.25s ease;
+}
+
+.checklist-progress-fill.is-complete {
+  background: #10b981 !important;
+}
+
+.checklist-progress-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.checklist-progress-badge.is-complete {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #10b981 !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
 }
 
 .checklist-item {
@@ -4310,6 +4338,74 @@ body.font-mono * {
   border-color: rgba(16, 185, 129, 0.4);
   background: rgba(16, 185, 129, 0.12);
   color: #34d399;
+}
+
+/* Card Priority Badge (Trello/Notion First-Class Visual Indicator) */
+.card-priority-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+}
+
+.card-priority-badge.priority-urgent {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: #ef4444 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+.card-priority-badge.priority-high {
+  background: rgba(249, 115, 22, 0.15) !important;
+  color: #f97316 !important;
+  border-color: rgba(249, 115, 22, 0.4) !important;
+}
+
+.card-priority-badge.priority-medium {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #f59e0b !important;
+  border-color: rgba(245, 158, 11, 0.4) !important;
+}
+
+.card-priority-badge.priority-low {
+  background: rgba(100, 116, 139, 0.15) !important;
+  color: #94a3b8 !important;
+  border-color: rgba(100, 116, 139, 0.4) !important;
+}
+
+/* Trello-Style Card Edge Priority Highlight */
+.card.has-priority-urgent {
+  border-left: 3.5px solid #ef4444 !important;
+}
+
+.card.has-priority-high {
+  border-left: 3.5px solid #f97316 !important;
+}
+
+.card.has-priority-medium {
+  border-left: 3.5px solid #f59e0b !important;
+}
+
+.card.has-priority-low {
+  border-left: 3.5px solid #64748b !important;
+}
+
+/* Compact Checklist in Kanban Cards */
+.kanban-card .card-checklist-box {
+  padding: 0.45rem 0.6rem;
+  margin-top: 0.5rem;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-sm);
+}
+
+.kanban-card .checklist-item {
+  font-size: 0.76rem;
 }
 
 /* Target Board Selector in Modal */
