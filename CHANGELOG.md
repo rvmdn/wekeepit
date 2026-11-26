@@ -5,7 +5,7 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 
 ---
 
-## [2.3.0] - 2026-11-26
+## [2.4.0] - 2026-11-26
 
 ### Ditambahkan (Added)
 - **Table / Database View (Notion-Style Spreadsheet)**: Sudut pandang ke-4 pada alur kerja (`📑 Tabel`) berbentuk tabel data padat dengan kolom *Judul Tugas*, *Status*, *Prioritas*, *Tenggat / Waktu*, *Checklist*, *Tags*, dan *Aksi*. Dilengkapi pengurutan interaktif (klik header untuk sortir naik/turun dengan indikator ▲/▼) serta filter pencarian instan pada tabel.
