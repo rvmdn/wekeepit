@@ -203,6 +203,9 @@
               <button type="button" class="workflow-view-btn" data-flow-view="calendar" id="flowViewCalendarBtn" title="Kalender Bulanan">📅 Kalender</button>
               <button type="button" class="workflow-view-btn" data-flow-view="table" id="flowViewTableBtn" title="Tabel / Database View">📑 Tabel</button>
             </div>
+            <button id="myTasksFilterBtn" class="btn btn-secondary" style="font-size: 0.82rem; padding: 7px 14px; display: none;" title="Tampilkan hanya tugas yang di-assign ke Anda">
+              👤 Tugas Saya
+            </button>
             <button id="newKanbanTaskBtn" class="btn btn-primary" style="font-size: 0.82rem; padding: 7px 16px; display: flex; align-items: center; gap: 6px;">
               <span>＋ Tugas Baru</span>
             </button>
@@ -276,6 +279,7 @@
                     Checklist <span class="sort-icon" id="sortIcon-checklist">↕</span>
                   </th>
                   <th style="min-width: 140px;">Tags</th>
+                  <th style="min-width: 130px;">Penanggung Jawab</th>
                   <th style="width: 90px; text-align: center;">Aksi</th>
                 </tr>
               </thead>
@@ -558,6 +562,14 @@
             <div class="form-group flex-1">
               <label for="formDueDate" class="form-label">🎯 Tenggat Waktu (Due Date)</label>
               <input type="date" id="formDueDate" class="form-input">
+            </div>
+          </div>
+
+          <!-- Assignee Multi-Picker (Server Mode, Kanban tasks only) -->
+          <div class="form-group" id="formAssigneeRow" style="display: none; margin-bottom: 12px;">
+            <label class="form-label">👥 Penanggung Jawab (Assignee)</label>
+            <div id="assigneePickerContainer" class="assignee-picker-container">
+              <!-- Chips rendered by JS -->
             </div>
           </div>
 

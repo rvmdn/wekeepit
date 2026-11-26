@@ -5218,3 +5218,89 @@ body.role-viewer .kanban-card {
   cursor: default !important;
 }
 
+
+/* =========================================================
+   MULTI-ASSIGNEE (V2.5.0)
+   ========================================================= */
+
+/* Assignee Picker in Card Modal */
+.assignee-picker-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-height: 44px;
+  align-items: center;
+}
+
+.assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.assignee-chip:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.assignee-chip.selected {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: #6366f1;
+  color: #a5b4fc;
+}
+
+.assignee-avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.card-assignees-row {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.card-assignee-chip {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.25);
+  border: 1.5px solid #6366f1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+.btn.btn-active-filter {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: #6366f1;
+  color: #a5b4fc;
+}

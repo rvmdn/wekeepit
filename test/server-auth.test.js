@@ -227,12 +227,19 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       assert.strictEqual(adminListUsers.statusCode, 200);
       assert.ok(Array.isArray(adminListUsers.json));
 
-      // 12. Non-admin cannot list users
+      // 12. Non-admin can read team roster, but CANNOT create user (403 Forbidden)
       const editorListUsers = await makeRequest(app.server, {
         path: '/api/auth/users',
         headers: { 'Authorization': `Bearer ${editorToken}` }
       });
-      assert.strictEqual(editorListUsers.statusCode, 403);
+      assert.strictEqual(editorListUsers.statusCode, 200);
+
+      const editorCreateUser = await makeRequest(app.server, {
+        path: '/api/auth/users',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${editorToken}` }
+      }, { username: 'illegal_user', password: 'password123' });
+      assert.strictEqual(editorCreateUser.statusCode, 403);
 
       // 13. Logout
       const logoutRes = await makeRequest(app.server, {

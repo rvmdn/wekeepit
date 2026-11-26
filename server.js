@@ -341,19 +341,22 @@ function createServerApp(options = {}) {
       }
     }
 
-    // User management (Admin only)
+    // User management (Roster read for all authenticated users, mutations for Admin only)
     if (pathname === '/api/auth/users') {
-      if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.MANAGE_USERS))) {
-        sendJson(res, 403, { error: '403 Forbidden: Hanya Administrator yang dapat mengelola pengguna.' });
-        return;
-      }
-
       if (req.method === 'GET') {
+        if (authManager.isAuthEnabled() && !authUser) {
+          sendJson(res, 401, { error: '401 Unauthorized: Otentikasi diperlukan.', authRequired: true });
+          return;
+        }
         sendJson(res, 200, authManager.listUsers());
         return;
       }
 
       if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.MANAGE_USERS))) {
+          sendJson(res, 403, { error: '403 Forbidden: Hanya Administrator yang dapat mengelola pengguna.' });
+          return;
+        }
         try {
           const body = await parseBody(req);
           const newUser = authManager.createUser(body);
@@ -375,10 +378,6 @@ function createServerApp(options = {}) {
       const targetUsername = decodeURIComponent(pathname.substring('/api/auth/users/'.length));
 
       if (req.method === 'PUT') {
-        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
-          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
-          return;
-        }
         try {
           const body = await parseBody(req);
           const updated = authManager.updateUser(targetUsername, body);
@@ -391,10 +390,6 @@ function createServerApp(options = {}) {
       }
 
       if (req.method === 'DELETE') {
-        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.MANAGE_FOLDERS)) {
-          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin mengelola folder dokumen.' });
-          return;
-        }
         try {
           authManager.deleteUser(targetUsername, authUser ? authUser.username : null);
           sendJson(res, 200, { success: true });

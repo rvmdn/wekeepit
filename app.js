@@ -323,6 +323,32 @@
   let currentUser = null;
   let authEnabled = false;
 
+  // --- MULTI-ASSIGNEE: TEAM ROSTER CACHE (V2.5.0) ---
+  let teamRoster = []; // [{ username, displayName, role }]
+  let myTasksFilterActive = false;
+
+  async function loadTeamRoster() {
+    if (!isServerAvailable) return;
+    try {
+      const res = await fetch(apiUrl('/api/auth/users'), { cache: 'no-store' });
+      if (res.ok) {
+        teamRoster = await res.json();
+      }
+    } catch (e) {
+      // offline / no auth
+    }
+    updateMyTasksFilterBtn();
+  }
+
+  function updateMyTasksFilterBtn() {
+    const btn = document.getElementById('myTasksFilterBtn');
+    if (!btn) return;
+    const shouldShow = authEnabled && currentUser && isServerAvailable && teamRoster.length > 1;
+    btn.style.display = shouldShow ? 'flex' : 'none';
+    btn.classList.toggle('btn-active-filter', myTasksFilterActive);
+    btn.textContent = myTasksFilterActive ? '👤 Tugas Saya ✕' : '👤 Tugas Saya';
+  }
+
   async function checkAuthStatus() {
     try {
       const res = await fetch(apiUrl('/api/auth/me'), { cache: 'no-store' });
@@ -394,6 +420,8 @@
     if (banner) {
       banner.style.display = (authEnabled && role === 'viewer') ? 'flex' : 'none';
     }
+    // Refresh roster & My Tasks button visibility after session change
+    loadTeamRoster();
   }
 
   function showAuthModal() {
@@ -637,6 +665,7 @@
     setupEventListeners();
     await checkAuthStatus();
     await checkServer();
+    await loadTeamRoster();
     await loadSchema();
     await loadCards();
     reminderService.init();
@@ -1190,6 +1219,16 @@
 
     if (newKanbanTaskBtn) {
       newKanbanTaskBtn.addEventListener('click', () => openCardModal(null, 'kanban', 'todo'));
+    }
+
+    // My Tasks filter button
+    const myTasksFilterBtn = document.getElementById('myTasksFilterBtn');
+    if (myTasksFilterBtn) {
+      myTasksFilterBtn.addEventListener('click', () => {
+        myTasksFilterActive = !myTasksFilterActive;
+        updateMyTasksFilterBtn();
+        renderAll();
+      });
     }
 
     if (emptyKanbanActionBtn) {
@@ -2425,7 +2464,12 @@
 
     const parsedQuery = metaEngine.parseQuery(searchQuery);
     const kanbanTasks = cards.filter(c => !c.archived && isKanbanTask(c));
-    const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
+    let filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
+
+    // My Tasks filter
+    if (myTasksFilterActive && currentUser) {
+      filteredTasks = filteredTasks.filter(c => Array.isArray(c.assignees) && c.assignees.includes(currentUser.username));
+    }
 
     if (kanbanTotalBadge) {
       kanbanTotalBadge.textContent = `${kanbanTasks.length} Tugas`;
@@ -2563,6 +2607,11 @@
       });
     }
 
+    // My Tasks filter
+    if (myTasksFilterActive && currentUser) {
+      filteredTasks = filteredTasks.filter(t => Array.isArray(t.assignees) && t.assignees.includes(currentUser.username));
+    }
+
     if (tableTotalCount) {
       tableTotalCount.textContent = `${filteredTasks.length} Tugas Terdaftar`;
     }
@@ -2622,7 +2671,7 @@
     if (filteredTasks.length === 0) {
       const emptyRow = document.createElement('tr');
       emptyRow.className = 'table-empty-row';
-      emptyRow.innerHTML = `<td colspan="7">Tidak ada tugas alur kerja yang cocok dengan filter</td>`;
+      emptyRow.innerHTML = `<td colspan="8">Tidak ada tugas alur kerja yang cocok dengan filter</td>`;
       flowTableBody.appendChild(emptyRow);
       return;
     }
@@ -2694,6 +2743,16 @@
         </td>
         <td>
           ${tagsDisplay}
+        </td>
+        <td style="font-size: 0.75rem;">
+          ${Array.isArray(task.assignees) && task.assignees.length > 0
+            ? task.assignees.map(username => {
+                const user = teamRoster.find(u => u.username === username);
+                const name = user ? (user.displayName || user.username) : username;
+                return `<span class="card-assignee-chip" title="${escapeHtml(name)}">${escapeHtml(name.charAt(0).toUpperCase())}</span>`;
+              }).join('')
+            : '<span style="color:var(--text-muted);">—</span>'
+          }
         </td>
         <td style="text-align: center;">
           <div style="display:inline-flex; gap:4px;">
@@ -3251,6 +3310,21 @@
     // Assemble Card
     cardEl.appendChild(headerEl);
     if (card.tags && card.tags.length > 0) cardEl.appendChild(tagsEl);
+    // Assignee chips (Kanban cards only - shown when task has assignees)
+    if (Array.isArray(card.assignees) && card.assignees.length > 0) {
+      const assigneesRow = document.createElement('div');
+      assigneesRow.className = 'card-assignees-row';
+      card.assignees.forEach(username => {
+        const user = teamRoster.find(u => u.username === username);
+        const name = user ? (user.displayName || user.username) : username;
+        const chip = document.createElement('span');
+        chip.className = 'card-assignee-chip';
+        chip.title = name;
+        chip.textContent = name.charAt(0).toUpperCase();
+        assigneesRow.appendChild(chip);
+      });
+      cardEl.appendChild(assigneesRow);
+    }
     if (card.content) cardEl.appendChild(contentEl);
     if (attachmentsBox) cardEl.appendChild(attachmentsBox);
     if (metadataBox) cardEl.appendChild(metadataBox);
@@ -3808,6 +3882,15 @@
 
     renderChecklistEditor();
     renderAttachmentsEditor();
+
+    // Assignee Picker – show only for Kanban tasks in server mode with >1 user
+    const selectedAssignees = card ? (Array.isArray(card.assignees) ? card.assignees : []) : [];
+    renderAssigneePicker(selectedAssignees);
+    const assigneeRow = document.getElementById('formAssigneeRow');
+    if (assigneeRow) {
+      assigneeRow.style.display = (isTask && isServerAvailable && teamRoster.length > 1) ? 'block' : 'none';
+    }
+
     showModalOverlay(cardModal);
     const modalBody = cardModal.querySelector('.modal-body');
     if (modalBody) modalBody.scrollTop = 0;
@@ -3820,6 +3903,31 @@
 
   function closeCardModal() {
     hideModalOverlay(cardModal);
+  }
+
+  // --- ASSIGNEE PICKER ---
+  function renderAssigneePicker(selected = []) {
+    const container = document.getElementById('assigneePickerContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    if (teamRoster.length === 0) {
+      container.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">Tidak ada anggota tim.</span>';
+      return;
+    }
+    teamRoster.forEach(user => {
+      const isSelected = selected.includes(user.username);
+      const chip = document.createElement('label');
+      chip.className = `assignee-chip${isSelected ? ' selected' : ''}`;
+      chip.innerHTML = `
+        <input type="checkbox" name="assignee_cb" value="${escapeHtml(user.username)}" ${isSelected ? 'checked' : ''} style="display:none;">
+        <span class="assignee-avatar">${escapeHtml((user.displayName || user.username).charAt(0).toUpperCase())}</span>
+        <span>${escapeHtml(user.displayName || user.username)}</span>
+      `;
+      chip.querySelector('input').addEventListener('change', () => {
+        chip.classList.toggle('selected', chip.querySelector('input').checked);
+      });
+      container.appendChild(chip);
+    });
   }
 
   function renderMetadataFormFields(existingData = {}) {
@@ -3973,6 +4081,11 @@
       }
     });
 
+    // Collect assignees
+    const assignees = Array.from(
+      document.querySelectorAll('#assigneePickerContainer input[name="assignee_cb"]:checked')
+    ).map(cb => cb.value);
+
     // Collect reminder
     let reminder = null;
     if (reminderDateTime.value) {
@@ -4010,6 +4123,7 @@
       checklist: editingChecklist.filter(c => c.text && c.text.trim()),
       attachments: editingAttachments,
       reminder,
+      assignees,
       updatedAt: new Date().toISOString()
     };
 
