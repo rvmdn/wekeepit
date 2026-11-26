@@ -15,12 +15,12 @@ test('AuthManager Unit Test Suite', async (t) => {
     } catch {}
   });
 
-  await t.test('Initializes with default users store', () => {
+  await t.test('Initializes with default master admin store', () => {
     const auth = new AuthManager({ usersFile: testUsersFile, authEnabled: true });
     assert.strictEqual(fs.existsSync(testUsersFile), true);
     const users = auth.listUsers();
-    assert.strictEqual(users.length, 3);
-    assert.deepStrictEqual(users.map(u => u.username).sort(), ['admin', 'editor', 'viewer']);
+    assert.strictEqual(users.length, 1);
+    assert.deepStrictEqual(users.map(u => u.username), ['admin']);
   });
 
   await t.test('Password hashing and verification', () => {
@@ -65,6 +65,7 @@ test('AuthManager Unit Test Suite', async (t) => {
 
   await t.test('Cookie-based token authentication', () => {
     const auth = new AuthManager({ usersFile: testUsersFile, authEnabled: true });
+    auth.createUser({ username: 'editor', password: 'editor123', role: ROLES.EDITOR });
     const loginRes = auth.login('editor', 'editor123');
     assert.strictEqual(loginRes.success, true);
 

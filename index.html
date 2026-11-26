@@ -85,6 +85,7 @@
         <div id="authUserPill" class="auth-user-pill" style="display: none;">
           <span id="authUserRoleBadge" class="auth-role-badge">Admin</span>
           <span id="authUserName" class="auth-user-name">User</span>
+          <button type="button" id="btnManageUsers" class="btn-user-mgmt" title="Kelola Pengguna Tim (Admin)" style="display: none;">👥</button>
           <button type="button" id="btnLogout" class="btn-logout" title="Keluar dari sesi">🚪</button>
         </div>
       </div>
@@ -884,19 +885,11 @@
           <div id="authLoginAlert" class="auth-login-alert" style="display: none;"></div>
           <div class="form-group" style="margin: 0;">
             <label for="loginUsername" class="form-label" style="font-size: 0.85rem; font-weight: 600;">Username</label>
-            <input type="text" id="loginUsername" class="form-input" placeholder="Masukkan username (admin / editor / viewer)" required autocomplete="username">
+            <input type="text" id="loginUsername" class="form-input" placeholder="Masukkan username" required autocomplete="username">
           </div>
           <div class="form-group" style="margin: 0;">
             <label for="loginPassword" class="form-label" style="font-size: 0.85rem; font-weight: 600;">Password</label>
             <input type="password" id="loginPassword" class="form-input" placeholder="Masukkan password" required autocomplete="current-password">
-          </div>
-          <div class="auth-demo-hint">
-            <div style="font-weight: 600; margin-bottom: 4px; font-size: 0.78rem; color: var(--accent-color);">Akun Bawaan (Default):</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted); display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
-              <span>👑 <strong>admin</strong> (admin123)</span>
-              <span>✏️ <strong>editor</strong> (editor123)</span>
-              <span>👁️ <strong>viewer</strong> (viewer123)</span>
-            </div>
           </div>
         </div>
         <div class="modal-footer" style="padding: 1rem 1.5rem; justify-content: stretch;">
@@ -905,6 +898,87 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: KELOLA PENGGUNA TIM (ADMIN ONLY) -->
+  <div id="userManagementModal" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog modal-user-mgmt">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 1.25rem;">👥</span>
+          <h3 class="modal-title" style="margin: 0;">Kelola Pengguna Tim</h3>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeUserMgmtModal">✕</button>
+      </div>
+      <div class="modal-body" style="max-height: 70vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1.25rem;">
+        <!-- Form Tambah Pengguna Baru -->
+        <div class="user-mgmt-section">
+          <h4 style="margin: 0 0 10px 0; font-size: 0.92rem; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+            <span>➕</span> <span>Tambah Pengguna Baru</span>
+          </h4>
+          <form id="addUserForm" class="user-mgmt-form">
+            <div id="addUserAlert" class="auth-login-alert" style="display: none; margin-bottom: 10px;"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="form-group" style="margin: 0;">
+                <label for="newUsername" class="form-label" style="font-size: 0.78rem;">Username</label>
+                <input type="text" id="newUsername" class="form-input" placeholder="contoh: budi_editor" required pattern="[a-zA-Z0-9_-]+" title="Hanya huruf, angka, tanda strip, atau garis bawah">
+              </div>
+              <div class="form-group" style="margin: 0;">
+                <label for="newPassword" class="form-label" style="font-size: 0.78rem;">Password (Min. 6 Karakter)</label>
+                <input type="password" id="newPassword" class="form-input" placeholder="Minimal 6 karakter" required minlength="6">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+              <div class="form-group" style="margin: 0;">
+                <label for="newDisplayName" class="form-label" style="font-size: 0.78rem;">Nama Tampilan</label>
+                <input type="text" id="newDisplayName" class="form-input" placeholder="contoh: Budi Santoso">
+              </div>
+              <div class="form-group" style="margin: 0;">
+                <label for="newRole" class="form-label" style="font-size: 0.78rem;">Peran (Role)</label>
+                <select id="newRole" class="form-select">
+                  <option value="editor" selected>✏️ Editor (Dapat buat &amp; edit kartu)</option>
+                  <option value="viewer">👁️ Viewer (Hanya baca / read-only)</option>
+                  <option value="admin">👑 Admin (Akses penuh &amp; kelola pengguna)</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+              <button type="submit" id="btnSubmitNewUser" class="btn btn-primary" style="padding: 7px 16px; font-size: 0.82rem;">
+                <span>Simpan Pengguna</span>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Daftar Pengguna Terdaftar -->
+        <div class="user-mgmt-section">
+          <h4 style="margin: 0 0 10px 0; font-size: 0.92rem; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between;">
+            <span style="display: flex; align-items: center; gap: 6px;">
+              <span>📋</span> <span>Daftar Pengguna Aktif</span>
+            </span>
+            <span class="table-view-badge" id="userCountBadge">1 Pengguna</span>
+          </h4>
+          <div class="user-table-wrapper" style="overflow-x: auto; border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
+            <table class="user-mgmt-table" style="width: 100%; border-collapse: collapse; font-size: 0.82rem;">
+              <thead>
+                <tr style="background: var(--bg-surface-elevated); border-bottom: 1px solid var(--border-color); text-align: left;">
+                  <th style="padding: 8px 12px;">Username</th>
+                  <th style="padding: 8px 12px;">Nama Tampilan</th>
+                  <th style="padding: 8px 12px;">Peran</th>
+                  <th style="padding: 8px 12px; text-align: center;">Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="userListTbody">
+                <!-- Rendered by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: flex-end;">
+        <button type="button" class="btn btn-secondary" id="closeUserMgmtBtn">Tutup</button>
+      </div>
     </div>
   </div>
 

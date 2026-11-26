@@ -90,20 +90,6 @@ class AuthManager {
             role: ROLES.ADMIN,
             displayName: 'Administrator',
             createdAt: new Date().toISOString()
-          },
-          {
-            username: 'editor',
-            passwordHash: this.hashPassword('editor123'),
-            role: ROLES.EDITOR,
-            displayName: 'Tim Editor',
-            createdAt: new Date().toISOString()
-          },
-          {
-            username: 'viewer',
-            passwordHash: this.hashPassword('viewer123'),
-            role: ROLES.VIEWER,
-            displayName: 'Tamu Pembaca',
-            createdAt: new Date().toISOString()
           }
         ];
         const dir = path.dirname(path.resolve(this.usersFile));

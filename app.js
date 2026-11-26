@@ -382,6 +382,10 @@
         if (nameEl) {
           nameEl.textContent = user.displayName || user.username || 'Pengguna';
         }
+        const mgmtBtn = document.getElementById('btnManageUsers');
+        if (mgmtBtn) {
+          mgmtBtn.style.display = role === 'admin' ? 'inline-block' : 'none';
+        }
       } else {
         pill.style.display = 'none';
       }
@@ -477,6 +481,154 @@
     currentUser = null;
     applyUserSession(null, false);
     showAuthModal();
+  }
+
+  // --- USER MANAGEMENT (ADMIN ONLY) ---
+  function openUserMgmtModal() {
+    const modal = document.getElementById('userManagementModal');
+    if (modal) {
+      modal.style.display = 'flex';
+      loadUserList();
+    }
+  }
+
+  function closeUserMgmtModal() {
+    const modal = document.getElementById('userManagementModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+    const alertBox = document.getElementById('addUserAlert');
+    if (alertBox) {
+      alertBox.style.display = 'none';
+      alertBox.textContent = '';
+    }
+  }
+
+  async function loadUserList() {
+    const tbody = document.getElementById('userListTbody');
+    const badge = document.getElementById('userCountBadge');
+    if (!tbody) return;
+
+    try {
+      const res = await fetch(apiUrl('/api/auth/users'));
+      if (res.ok) {
+        const users = await res.json();
+        if (badge) badge.textContent = `${users.length} Pengguna`;
+        if (users.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Belum ada pengguna.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = users.map(u => {
+          const roleClass = u.role === 'admin' ? 'role-admin' : (u.role === 'editor' ? 'role-editor' : 'role-viewer');
+          const roleLabel = u.role === 'admin' ? '👑 Admin' : (u.role === 'editor' ? '✏️ Editor' : '👁️ Viewer');
+          const isSelf = currentUser && currentUser.username === u.username;
+          return `
+            <tr>
+              <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(u.username)}</td>
+              <td>${escapeHtml(u.displayName || '-')}</td>
+              <td><span class="auth-role-badge ${roleClass}">${roleLabel}</span></td>
+              <td style="text-align: center;">
+                ${isSelf ? '<span style="font-size: 0.74rem; color: var(--text-muted);">(Akun Anda)</span>' : `
+                  <button type="button" class="btn btn-sm btn-secondary btn-delete-user" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem; color: #ef4444;" title="Hapus akun pengguna">
+                    🗑️ Hapus
+                  </button>
+                `}
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        tbody.querySelectorAll('.btn-delete-user').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const username = btn.getAttribute('data-username');
+            handleDeleteUser(username);
+          });
+        });
+      }
+    } catch (e) {
+      console.warn('Gagal memuat daftar pengguna:', e);
+    }
+  }
+
+  async function handleAddUser(e) {
+    if (e) e.preventDefault();
+    const userInput = document.getElementById('newUsername');
+    const passInput = document.getElementById('newPassword');
+    const nameInput = document.getElementById('newDisplayName');
+    const roleSelect = document.getElementById('newRole');
+    const alertBox = document.getElementById('addUserAlert');
+    const submitBtn = document.getElementById('btnSubmitNewUser');
+
+    const username = (userInput ? userInput.value : '').trim();
+    const password = passInput ? passInput.value : '';
+    const displayName = (nameInput ? nameInput.value : '').trim();
+    const role = roleSelect ? roleSelect.value : 'editor';
+
+    if (!username || !password) {
+      if (alertBox) {
+        alertBox.textContent = 'Harap isi username dan password.';
+        alertBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Menyimpan...';
+    }
+
+    try {
+      const res = await fetch(apiUrl('/api/auth/users'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ username, password, displayName, role })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (userInput) userInput.value = '';
+        if (passInput) passInput.value = '';
+        if (nameInput) nameInput.value = '';
+        if (alertBox) {
+          alertBox.style.display = 'none';
+        }
+        await loadUserList();
+      } else {
+        if (alertBox) {
+          alertBox.textContent = data.error || 'Gagal menambahkan pengguna.';
+          alertBox.style.display = 'block';
+        }
+      }
+    } catch (err) {
+      if (alertBox) {
+        alertBox.textContent = 'Terjadi kesalahan: ' + err.message;
+        alertBox.style.display = 'block';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span>Simpan Pengguna</span>';
+      }
+    }
+  }
+
+  async function handleDeleteUser(username) {
+    if (!username) return;
+    if (!confirm(`Apakah Anda yakin ingin menghapus akun '${username}'?`)) return;
+
+    try {
+      const res = await fetch(apiUrl('/api/auth/users/' + encodeURIComponent(username)), {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await loadUserList();
+      } else {
+        alert(data.error || 'Gagal menghapus pengguna.');
+      }
+    } catch (e) {
+      alert('Terjadi kesalahan saat menghapus pengguna: ' + e.message);
+    }
   }
 
   // --- INITIALIZATION ---
@@ -754,6 +906,24 @@
     const logoutBtn = document.getElementById('btnLogout');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', handleLogout);
+    }
+
+    // User management modal listeners
+    const manageUsersBtn = document.getElementById('btnManageUsers');
+    if (manageUsersBtn) {
+      manageUsersBtn.addEventListener('click', openUserMgmtModal);
+    }
+    const closeUserMgmtModalBtn = document.getElementById('closeUserMgmtModal');
+    if (closeUserMgmtModalBtn) {
+      closeUserMgmtModalBtn.addEventListener('click', closeUserMgmtModal);
+    }
+    const closeUserMgmtBtn = document.getElementById('closeUserMgmtBtn');
+    if (closeUserMgmtBtn) {
+      closeUserMgmtBtn.addEventListener('click', closeUserMgmtModal);
+    }
+    const addUserForm = document.getElementById('addUserForm');
+    if (addUserForm) {
+      addUserForm.addEventListener('submit', handleAddUser);
     }
 
     // V2 Domain navigation tabs

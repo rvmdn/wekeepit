@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:auth": "node -e \"process.env.AUTH_ENABLED='true'; require('./server.js');\"",
     "test": "node --test test/**/*.test.js",
     "desktop": "launch-desktop.bat"
   },

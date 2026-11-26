@@ -132,10 +132,35 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       const wrongLogin = await makeRequest(app.server, {
         path: '/api/auth/login',
         method: 'POST'
-      }, { username: 'viewer', password: 'badpassword' });
+      }, { username: 'admin', password: 'badpassword' });
       assert.strictEqual(wrongLogin.statusCode, 401);
 
-      // 3. Login as Viewer
+      // 3. Login as Master Admin
+      const adminLogin = await makeRequest(app.server, {
+        path: '/api/auth/login',
+        method: 'POST'
+      }, { username: 'admin', password: 'admin123' });
+      assert.strictEqual(adminLogin.statusCode, 200);
+      assert.strictEqual(adminLogin.json.success, true);
+      const adminToken = adminLogin.json.token;
+      assert.ok(adminToken);
+
+      // 4. Admin creates Editor and Viewer accounts
+      const createEditorRes = await makeRequest(app.server, {
+        path: '/api/auth/users',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
+      }, { username: 'editor', password: 'editor123', role: 'editor', displayName: 'Tim Editor' });
+      assert.strictEqual(createEditorRes.statusCode, 201);
+
+      const createViewerRes = await makeRequest(app.server, {
+        path: '/api/auth/users',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
+      }, { username: 'viewer', password: 'viewer123', role: 'viewer', displayName: 'Tamu Pembaca' });
+      assert.strictEqual(createViewerRes.statusCode, 201);
+
+      // 5. Login as Viewer
       const viewerLogin = await makeRequest(app.server, {
         path: '/api/auth/login',
         method: 'POST'
@@ -145,14 +170,14 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       const viewerToken = viewerLogin.json.token;
       assert.ok(viewerToken);
 
-      // 4. Viewer can read cards
+      // 6. Viewer can read cards
       const viewerGetCards = await makeRequest(app.server, {
         path: '/api/cards',
         headers: { 'Authorization': `Bearer ${viewerToken}` }
       });
       assert.strictEqual(viewerGetCards.statusCode, 200);
 
-      // 5. Viewer CANNOT write cards (403 Forbidden)
+      // 7. Viewer CANNOT write cards (403 Forbidden)
       const viewerPostCards = await makeRequest(app.server, {
         path: '/api/cards',
         method: 'POST',
@@ -161,7 +186,7 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       assert.strictEqual(viewerPostCards.statusCode, 403);
       assert.ok(viewerPostCards.json.error.includes('Viewer'));
 
-      // 6. Login as Editor
+      // 8. Login as Editor
       const editorLogin = await makeRequest(app.server, {
         path: '/api/auth/login',
         method: 'POST'
@@ -169,7 +194,7 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       assert.strictEqual(editorLogin.statusCode, 200);
       const editorToken = editorLogin.json.token;
 
-      // 7. Editor CAN write cards
+      // 9. Editor CAN write cards
       const editorPostCards = await makeRequest(app.server, {
         path: '/api/cards',
         method: 'POST',
@@ -185,14 +210,6 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
         headers: { 'Authorization': `Bearer ${editorToken}` }
       }, { fields: [{ key: 'forbidden', label: 'No' }] });
       assert.strictEqual(editorPostSchema.statusCode, 403);
-
-      // 9. Login as Admin
-      const adminLogin = await makeRequest(app.server, {
-        path: '/api/auth/login',
-        method: 'POST'
-      }, { username: 'admin', password: 'admin123' });
-      assert.strictEqual(adminLogin.statusCode, 200);
-      const adminToken = adminLogin.json.token;
 
       // 10. Admin CAN modify schema
       const adminPostSchema = await makeRequest(app.server, {
