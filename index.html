@@ -85,7 +85,10 @@
     <nav class="nav-tabs">
       <div class="main-domain-tabs">
         <button class="domain-tab active" id="tabDomainBoard" data-domain="board">
-          📋 Work Board
+          📌 Notice Board
+        </button>
+        <button class="domain-tab" id="tabDomainKanban" data-domain="kanban">
+          ⚡ Kanban Flow <span class="tab-count" id="countKanbanFlow" style="display: none;">0</span>
         </button>
         <button class="domain-tab" id="tabDomainDocs" data-domain="documents">
           📁 Dokumen Lokal
@@ -119,7 +122,6 @@
       <div class="view-density-toggle" id="viewDensityToggle">
         <button class="density-btn active" data-density="normal" title="Tampilan Grid Rapi">Grid</button>
         <button class="density-btn" data-density="compact" title="Tampilan Kompak">Kompak</button>
-        <button class="density-btn kanban-mode-btn" data-density="kanban" id="kanbanModeBtn" title="Mode Papan Kanban (Alur Kerja Status)">📋 Kanban</button>
         <button class="density-btn free-mode-btn" data-density="free" id="freeModeBtn" title="Mode Kanvas Bebas (Bisa diacak dan digeser)">🖐️ Bebas</button>
       </div>
       <button id="tidyUpBtn" class="btn btn-secondary tidy-up-btn" style="display: none;" title="Rapikan kartu yang berserakan kembali ke posisi rapi">🧹 Rapikan</button>
@@ -159,17 +161,42 @@
           <div class="card-grid" id="cardsGrid"></div>
         </section>
 
-        <!-- Kanban Board Section -->
-        <section class="board-section kanban-section" id="kanbanSection" style="display: none;">
-          <div class="kanban-board-container" id="kanbanBoardContainer"></div>
-        </section>
-
         <!-- Clean Notepad Empty State -->
         <div id="emptyState" class="empty-state">
           <div class="empty-icon">📝</div>
           <h3 class="empty-title">Belum ada catatan</h3>
           <p class="empty-desc" id="emptyDesc">Mulai buat kartu catatan, simpan tautan & role akses, atau atur aktivitas harian.</p>
           <button id="emptyActionBtn" class="btn btn-primary">➕ Buat Catatan Pertama</button>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 2: KANBAN FLOW (ALUR KERJA TUGAS) ================= -->
+      <div id="kanbanView" class="view-panel" style="display: none;">
+        <div class="kanban-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 12px; padding: 0.5rem 0.25rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <span>⚡ Papan Alur Kerja (Kanban Flow)</span>
+              <span class="badge" id="kanbanTotalBadge" style="font-size: 0.75rem; background: var(--bg-hover); padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-subtle); color: var(--text-secondary);">0 Tugas</span>
+            </h2>
+            <p style="font-size: 0.8rem; margin: 0; color: var(--text-muted);">Pisahkan catatan referensi Notice Board dengan alur kerja tugas harian yang bergerak dari Backlog hingga Selesai.</p>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="newKanbanTaskBtn" class="btn btn-primary" style="font-size: 0.82rem; padding: 7px 16px; display: flex; align-items: center; gap: 6px;">
+              <span>＋ Tugas Baru</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="kanban-section">
+          <div class="kanban-board-container" id="kanbanBoardContainer"></div>
+        </div>
+
+        <!-- Kanban Empty State -->
+        <div id="kanbanEmptyState" class="empty-state" style="display: none;">
+          <div class="empty-icon">⚡</div>
+          <h3 class="empty-title">Belum ada tugas di alur kerja</h3>
+          <p class="empty-desc">Catatan di Notice Board tidak masuk ke sini secara otomatis. Buat tugas alur kerja pertama Anda.</p>
+          <button id="emptyKanbanActionBtn" class="btn btn-primary">＋ Buat Tugas Pertama</button>
         </div>
       </div>
 
@@ -390,7 +417,21 @@
             </select>
           </div>
 
-          <div class="form-row" style="display: flex; gap: 12px; margin-bottom: 12px;">
+          <!-- Pilihan Papan: Notice Board vs Kanban Flow -->
+          <div class="form-group" style="margin-bottom: 14px;">
+            <label class="form-label">Tujuan Papan</label>
+            <div class="target-board-selector" style="display: flex; gap: 8px;">
+              <button type="button" class="target-board-btn active" id="targetBoardNoticeBtn" data-target-board="notice" style="flex: 1; font-size: 0.82rem; padding: 8px 10px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border-subtle); background: var(--bg-surface); cursor: pointer; border-radius: var(--radius-md);">
+                <span>📌 Catatan Notice Board</span>
+              </button>
+              <button type="button" class="target-board-btn" id="targetBoardKanbanBtn" data-target-board="kanban" style="flex: 1; font-size: 0.82rem; padding: 8px 10px; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border-subtle); background: var(--bg-hover); cursor: pointer; border-radius: var(--radius-md);">
+                <span>⚡ Tugas Kanban Flow</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Alur Kerja (Hanya tampil jika Kanban Flow dipilih) -->
+          <div class="form-row" id="formStatusRow" style="display: none; gap: 12px; margin-bottom: 12px;">
             <div class="form-group flex-1">
               <label for="formStatus" class="form-label">📊 Status Alur Kerja</label>
               <select id="formStatus" class="form-select">

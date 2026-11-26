@@ -4311,3 +4311,22 @@ body.font-mono * {
   background: rgba(16, 185, 129, 0.12);
   color: #34d399;
 }
+
+/* Target Board Selector in Modal */
+.target-board-btn {
+  transition: all 0.15s ease;
+  color: var(--text-secondary);
+}
+
+.target-board-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary);
+}
+
+.target-board-btn.active {
+  background: var(--accent-primary) !important;
+  color: #ffffff !important;
+  border-color: var(--accent-primary) !important;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+}

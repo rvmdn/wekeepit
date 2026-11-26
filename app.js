@@ -79,9 +79,17 @@
   const cardsBadge = document.getElementById('cardsBadge');
 
   // Kanban DOM Elements & Schema
-  const kanbanSection = document.getElementById('kanbanSection');
+  const tabDomainKanban = document.getElementById('tabDomainKanban');
+  const kanbanView = document.getElementById('kanbanView');
   const kanbanBoardContainer = document.getElementById('kanbanBoardContainer');
-  const kanbanModeBtn = document.getElementById('kanbanModeBtn');
+  const countKanbanFlow = document.getElementById('countKanbanFlow');
+  const kanbanTotalBadge = document.getElementById('kanbanTotalBadge');
+  const newKanbanTaskBtn = document.getElementById('newKanbanTaskBtn');
+  const emptyKanbanActionBtn = document.getElementById('emptyKanbanActionBtn');
+  const kanbanEmptyState = document.getElementById('kanbanEmptyState');
+  const targetBoardNoticeBtn = document.getElementById('targetBoardNoticeBtn');
+  const targetBoardKanbanBtn = document.getElementById('targetBoardKanbanBtn');
+  const formStatusRow = document.getElementById('formStatusRow');
   const formStatus = document.getElementById('formStatus');
 
   const KANBAN_COLUMNS = [
@@ -91,6 +99,10 @@
     { id: 'review', label: 'Review', icon: '🔍', color: '#8b5cf6' },
     { id: 'done', label: 'Selesai', icon: '✅', color: '#10b981' }
   ];
+
+  function isKanbanTask(card) {
+    return Boolean(card && card.status && ['backlog', 'todo', 'in_progress', 'review', 'done'].includes(card.status));
+  }
 
   // V2 Domain & Navigation DOM Elements
   const tabDomainBoard = document.getElementById('tabDomainBoard');
@@ -650,7 +662,6 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('.density-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        const prevDensity = currentDensity;
         currentDensity = btn.getAttribute('data-density');
 
         if (currentDensity === 'free') {
@@ -659,31 +670,46 @@
           cardsGrid.classList.add('free-canvas');
           pinnedGrid.classList.add('free-canvas');
           if (tidyUpBtn) tidyUpBtn.style.display = 'inline-flex';
-          if (kanbanSection) kanbanSection.style.display = 'none';
         } else if (currentDensity === 'compact') {
           cardsGrid.classList.remove('free-canvas');
           pinnedGrid.classList.remove('free-canvas');
           cardsGrid.classList.add('compact');
           pinnedGrid.classList.add('compact');
           if (tidyUpBtn) tidyUpBtn.style.display = 'none';
-          if (kanbanSection) kanbanSection.style.display = 'none';
-        } else if (currentDensity === 'kanban') {
-          cardsGrid.classList.remove('free-canvas', 'compact');
-          pinnedGrid.classList.remove('free-canvas', 'compact');
-          if (tidyUpBtn) tidyUpBtn.style.display = 'none';
-          pinnedSection.style.display = 'none';
-          cardsSection.style.display = 'none';
-          if (kanbanSection) kanbanSection.style.display = 'block';
         } else {
           cardsGrid.classList.remove('free-canvas', 'compact');
           pinnedGrid.classList.remove('free-canvas', 'compact');
           if (tidyUpBtn) tidyUpBtn.style.display = 'none';
-          if (kanbanSection) kanbanSection.style.display = 'none';
         }
 
         renderAll();
       });
     });
+
+    if (targetBoardNoticeBtn) {
+      targetBoardNoticeBtn.addEventListener('click', () => {
+        targetBoardNoticeBtn.classList.add('active');
+        if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.remove('active');
+        if (formStatusRow) formStatusRow.style.display = 'none';
+      });
+    }
+
+    if (targetBoardKanbanBtn) {
+      targetBoardKanbanBtn.addEventListener('click', () => {
+        targetBoardKanbanBtn.classList.add('active');
+        if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.remove('active');
+        if (formStatusRow) formStatusRow.style.display = 'flex';
+        if (formStatus && !formStatus.value) formStatus.value = 'todo';
+      });
+    }
+
+    if (newKanbanTaskBtn) {
+      newKanbanTaskBtn.addEventListener('click', () => openCardModal(null, 'kanban', 'todo'));
+    }
+
+    if (emptyKanbanActionBtn) {
+      emptyKanbanActionBtn.addEventListener('click', () => openCardModal(null, 'kanban', 'todo'));
+    }
 
     if (tidyUpBtn) {
       tidyUpBtn.addEventListener('click', tidyUpCanvasCards);
@@ -1108,16 +1134,18 @@
 
     // Toggle view panels
     if (boardView) boardView.style.display = (domain === 'board') ? 'block' : 'none';
+    if (kanbanView) kanbanView.style.display = (domain === 'kanban') ? 'block' : 'none';
     if (documentsView) documentsView.style.display = (domain === 'documents') ? 'block' : 'none';
     if (searchResultsView) searchResultsView.style.display = (domain === 'search') ? 'block' : 'none';
 
-    // Toggle Work Board header controls
+    // Toggle Work Board header controls (only visible on Notice Board)
     if (boardFilterTabs) boardFilterTabs.style.display = (domain === 'board') ? 'flex' : 'none';
     if (viewDensityToggle) viewDensityToggle.style.display = (domain === 'board') ? 'flex' : 'none';
+    if (tidyUpBtn && domain !== 'board') tidyUpBtn.style.display = 'none';
 
     const tagBarSection = document.getElementById('tagBarSection');
     if (tagBarSection) {
-      if (domain === 'board') {
+      if (domain === 'board' || domain === 'kanban') {
         renderTagChips();
       } else {
         tagBarSection.style.display = 'none';
@@ -1126,6 +1154,9 @@
 
     if (domain === 'board') {
       renderAll();
+    } else if (domain === 'kanban') {
+      renderKanbanView();
+      updateTabCounts();
     } else if (domain === 'documents') {
       checkServer().then(() => loadFoldersAndDocuments());
     } else if (domain === 'search') {
@@ -1698,7 +1729,11 @@
   // --- RENDER LOGIC ---
   function renderAll() {
     renderTagChips();
-    renderCards();
+    if (currentDomain === 'kanban') {
+      renderKanbanView();
+    } else {
+      renderCards();
+    }
     updateTabCounts();
   }
 
@@ -1777,8 +1812,9 @@
       filterNotice.style.display = 'none';
     }
 
-    // Filter matching cards
-    let filtered = cards.filter(card => metaEngine.matches(card, parsedQuery));
+    // Filter matching cards: strictly Notice Board notes (non-kanban)
+    const noticeCards = cards.filter(c => !isKanbanTask(c));
+    let filtered = noticeCards.filter(card => metaEngine.matches(card, parsedQuery));
 
     // Tab-based filtering
     if (currentTab === 'pinned') {
@@ -1798,18 +1834,6 @@
     }
 
     const cardsSectionHeader = document.getElementById('cardsSectionHeader');
-
-    // Kanban View Branch
-    if (currentDensity === 'kanban') {
-      pinnedSection.style.display = 'none';
-      cardsSection.style.display = 'none';
-      if (cardsSectionHeader) cardsSectionHeader.style.display = 'none';
-      if (tidyUpBtn) tidyUpBtn.style.display = 'none';
-      renderKanbanView(filtered);
-      return;
-    } else {
-      if (kanbanSection) kanbanSection.style.display = 'none';
-    }
 
     // Separate pinned cards if in 'all' tab
     if (currentTab === 'all' && parsedQuery.isEmpty) {
@@ -1890,24 +1914,31 @@
     }
   }
 
-  function renderKanbanView(filteredCards) {
+  function renderKanbanView() {
     if (!kanbanBoardContainer) return;
     kanbanBoardContainer.innerHTML = '';
 
-    if (filteredCards.length === 0 && cards.length === 0) {
-      emptyState.style.display = 'flex';
-      if (kanbanSection) kanbanSection.style.display = 'none';
+    const parsedQuery = metaEngine.parseQuery(searchQuery);
+    const kanbanTasks = cards.filter(c => isKanbanTask(c));
+    const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
+
+    if (kanbanTotalBadge) {
+      kanbanTotalBadge.textContent = `${kanbanTasks.length} Tugas`;
+    }
+
+    const kanbanSectionWrap = kanbanView ? kanbanView.querySelector('.kanban-section') : null;
+
+    if (kanbanTasks.length === 0) {
+      if (kanbanEmptyState) kanbanEmptyState.style.display = 'flex';
+      if (kanbanSectionWrap) kanbanSectionWrap.style.display = 'none';
       return;
     } else {
-      emptyState.style.display = 'none';
-      if (kanbanSection) kanbanSection.style.display = 'block';
+      if (kanbanEmptyState) kanbanEmptyState.style.display = 'none';
+      if (kanbanSectionWrap) kanbanSectionWrap.style.display = 'block';
     }
 
     KANBAN_COLUMNS.forEach(col => {
-      const colCards = filteredCards.filter(c => {
-        const s = c.status || 'todo';
-        return s === col.id;
-      });
+      const colCards = filteredTasks.filter(c => c.status === col.id);
 
       const colEl = document.createElement('div');
       colEl.className = `kanban-column kanban-col-${col.id}`;
@@ -1926,7 +1957,7 @@
       `;
 
       headerEl.querySelector('.kanban-add-card-btn').addEventListener('click', () => {
-        openCardModal(null, col.id);
+        openCardModal(null, 'kanban', col.id);
       });
 
       // Column Body (Cards & Drop zone)
@@ -1954,19 +1985,20 @@
         if (!cardId) return;
 
         const targetCard = cards.find(c => String(c.id) === String(cardId));
-        if (targetCard && (targetCard.status || 'todo') !== col.id) {
+        if (targetCard && targetCard.status !== col.id) {
           targetCard.status = col.id;
           targetCard.updatedAt = new Date().toISOString();
           await saveCards();
-          renderCards();
-          alertToast(`Kartu "${targetCard.title || 'Catatan'}" dipindah ke ${col.label}`);
+          renderKanbanView();
+          updateTabCounts();
+          alertToast(`Tugas "${targetCard.title || 'Tugas'}" dipindah ke ${col.label}`);
         }
       });
 
       if (colCards.length === 0) {
         const emptyDrop = document.createElement('div');
         emptyDrop.className = 'kanban-empty-drop-hint';
-        emptyDrop.innerHTML = `<span>Tarik kartu ke sini</span>`;
+        emptyDrop.innerHTML = `<span>Tarik tugas ke sini</span>`;
         bodyEl.appendChild(emptyDrop);
       } else {
         colCards.forEach(card => {
@@ -2184,6 +2216,7 @@
     cardEl.setAttribute('data-id', card.id || '');
     cardEl.style.setProperty('--card-color', card.color || '#6366f1');
 
+    const isTask = isKanbanTask(card);
     const cardStatus = card.status || 'todo';
     const statusDef = KANBAN_COLUMNS.find(c => c.id === cardStatus) || KANBAN_COLUMNS[1];
 
@@ -2193,9 +2226,9 @@
     headerEl.innerHTML = `
       <div class="card-title-group" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
         <span class="card-drag-indicator" title="Geser kartu">⠿</span>
-        <span class="card-status-badge status-${cardStatus}" title="Status: ${statusDef.label}">
+        ${isTask ? `<span class="card-status-badge status-${cardStatus}" title="Status: ${statusDef.label}">
           ${statusDef.icon} ${statusDef.label}
-        </span>
+        </span>` : ''}
         <h3 class="card-title">${escapeHtml(card.title || 'Tanpa Judul')}</h3>
       </div>
       <div class="card-actions">
@@ -2491,11 +2524,22 @@
   }
 
   function updateTabCounts() {
-    countAll.textContent = cards.length;
-    countPinned.textContent = cards.filter(c => c.pinned).length;
-    if (countDocuments) countDocuments.textContent = cards.filter(c => Array.isArray(c.attachments) && c.attachments.length > 0).length;
-    countReminders.textContent = cards.filter(c => c.reminder && c.reminder.datetime).length;
-    countChecklist.textContent = cards.filter(c => Array.isArray(c.checklist) && c.checklist.length > 0).length;
+    const noticeCards = cards.filter(c => !isKanbanTask(c));
+    const kanbanCards = cards.filter(c => isKanbanTask(c));
+
+    countAll.textContent = noticeCards.length;
+    countPinned.textContent = noticeCards.filter(c => c.pinned).length;
+    if (countDocuments) countDocuments.textContent = noticeCards.filter(c => Array.isArray(c.attachments) && c.attachments.length > 0).length;
+    countReminders.textContent = noticeCards.filter(c => c.reminder && c.reminder.datetime).length;
+    countChecklist.textContent = noticeCards.filter(c => Array.isArray(c.checklist) && c.checklist.length > 0).length;
+
+    if (countKanbanFlow) {
+      countKanbanFlow.textContent = kanbanCards.length;
+      countKanbanFlow.style.display = kanbanCards.length > 0 ? 'inline-flex' : 'none';
+    }
+    if (kanbanTotalBadge) {
+      kanbanTotalBadge.textContent = `${kanbanCards.length} Tugas`;
+    }
   }
 
   // --- CARD MODAL / FORM ---
@@ -2578,7 +2622,7 @@
     }
   }
 
-  function openCardModal(card = null, defaultStatus = 'todo') {
+  function openCardModal(card = null, defaultTarget = null, defaultStatus = 'todo') {
     cardForm.reset();
     editingChecklist = [];
     editingAttachments = [];
@@ -2594,12 +2638,18 @@
     // Populate schema fields into container
     renderMetadataFormFields(card ? card.metadata : {});
 
-    if (formStatus) {
-      if (card) {
-        formStatus.value = card.status || 'todo';
-      } else {
-        formStatus.value = defaultStatus || 'todo';
-      }
+    // Target Board & Status Setup
+    const isTask = card ? isKanbanTask(card) : (defaultTarget === 'kanban' || currentDomain === 'kanban');
+    if (isTask) {
+      if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.add('active');
+      if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.remove('active');
+      if (formStatusRow) formStatusRow.style.display = 'flex';
+      if (formStatus) formStatus.value = (card && card.status) ? card.status : (defaultStatus || 'todo');
+    } else {
+      if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.add('active');
+      if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.remove('active');
+      if (formStatusRow) formStatusRow.style.display = 'none';
+      if (formStatus) formStatus.value = '';
     }
 
     if (card) {
@@ -2836,11 +2886,14 @@
       };
     }
 
+    const isKanban = targetBoardKanbanBtn && targetBoardKanbanBtn.classList.contains('active');
+    const assignedStatus = isKanban ? (formStatus && formStatus.value ? formStatus.value : 'todo') : null;
+
     const existingCard = cards.find(c => c.id === id);
     const cardPayload = {
       id,
       title,
-      status: formStatus ? formStatus.value : (existingCard ? (existingCard.status || 'todo') : 'todo'),
+      status: assignedStatus,
       content: formContent.value.trim(),
       color: selectedColor,
       pinned: formPinned.checked,
