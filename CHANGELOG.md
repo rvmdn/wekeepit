@@ -5,6 +5,18 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 
 ---
 
+## [2.3.0] - 2026-11-26
+
+### Ditambahkan (Added)
+- **Pemisahan Domain Notice Board & Kanban Flow**: Memisahkan secara tegas catatan referensi murni (`📌 Notice Board`) dari tugas alur kerja (`⚡ Kanban Flow`). Catatan referensi Notice Board tidak lagi tercampur atau dipaksa memiliki status `todo`.
+- **Kanban Board View (Notion-style)**: 5 swimlane status alur kerja (`Backlog`, `To Do`, `In Progress`, `Review`, `Done`) dengan interaksi drag-and-drop native HTML5 yang intuitif, sinkronisasi posisi otomatis, dan penghitung kartu per kolom.
+- **Timeline Gantt Chart View (`📊 Timeline`)**: Visualisasi rentang waktu pengerjaan tugas (`startDate` s.d. `dueDate`) dengan sliding window 14 hari, bilah horizontal interaktif berkode warna status, penanda hari ini (*today indicator*), serta tombol navigasi tanggal (*Hari Ini*, *Mundur*, *Maju*).
+- **Monthly Calendar Grid View (`📅 Kalender`)**: Tampilan kalender bulanan 7-hari dengan chip tugas ber-status, indikator tanggal hari ini, dan kemampuan klik langsung pada tanggal untuk membuat tugas baru dengan tanggal mulai terisi otomatis.
+- **Form Pemilih Domain & Rentang Tanggal**: Pada modal tambah/edit kartu, pengguna dapat memilih sasaran kartu (`📌 Catatan Notice Board` vs `⚡ Tugas Kanban Flow`), memilih status awal, serta menentukan `Tanggal Mulai` dan `Tenggat Waktu` secara opsional.
+- **Empty State & Quick Actions**: Menyediakan panduan visual dan tombol *Buat Tugas Baru* di tampilan Kanban, Timeline, dan Kalender saat belum ada tugas aktif.
+
+---
+
 ## [2.2.0] - 2026-11-26
 
 ### Diperbaiki (Fixed)

@@ -92,6 +92,30 @@
   const formStatusRow = document.getElementById('formStatusRow');
   const formStatus = document.getElementById('formStatus');
 
+  // Workflow Sub-Views State & Elements (Kanban / Timeline / Calendar)
+  let currentWorkflowView = 'kanban'; // 'kanban', 'timeline', 'calendar'
+  let timelineWindowStart = new Date();
+  timelineWindowStart.setDate(timelineWindowStart.getDate() - 3);
+  let calendarCurrentDate = new Date();
+
+  const workflowViewToggle = document.getElementById('workflowViewToggle');
+  const kanbanSectionWrap = document.getElementById('kanbanSectionWrap');
+  const timelineSectionWrap = document.getElementById('timelineSectionWrap');
+  const calendarSectionWrap = document.getElementById('calendarSectionWrap');
+  const timelineGanttWrapper = document.getElementById('timelineGanttWrapper');
+  const timelineRangeLabel = document.getElementById('timelineRangeLabel');
+  const timelinePrevBtn = document.getElementById('timelinePrevBtn');
+  const timelineTodayBtn = document.getElementById('timelineTodayBtn');
+  const timelineNextBtn = document.getElementById('timelineNextBtn');
+  const calendarGridContainer = document.getElementById('calendarGridContainer');
+  const calendarMonthLabel = document.getElementById('calendarMonthLabel');
+  const calendarPrevMonthBtn = document.getElementById('calendarPrevMonthBtn');
+  const calendarTodayBtn = document.getElementById('calendarTodayBtn');
+  const calendarNextMonthBtn = document.getElementById('calendarNextMonthBtn');
+  const formDateRangeRow = document.getElementById('formDateRangeRow');
+  const formStartDate = document.getElementById('formStartDate');
+  const formDueDate = document.getElementById('formDueDate');
+
   const KANBAN_COLUMNS = [
     { id: 'backlog', label: 'Backlog', icon: '📥', color: '#64748b' },
     { id: 'todo', label: 'To Do', icon: '📋', color: '#f59e0b' },
@@ -691,6 +715,7 @@
         targetBoardNoticeBtn.classList.add('active');
         if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.remove('active');
         if (formStatusRow) formStatusRow.style.display = 'none';
+        if (formDateRangeRow) formDateRangeRow.style.display = 'none';
       });
     }
 
@@ -699,7 +724,62 @@
         targetBoardKanbanBtn.classList.add('active');
         if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.remove('active');
         if (formStatusRow) formStatusRow.style.display = 'flex';
+        if (formDateRangeRow) formDateRangeRow.style.display = 'flex';
         if (formStatus && !formStatus.value) formStatus.value = 'todo';
+      });
+    }
+
+    // Workflow View Switcher (Kanban vs Timeline vs Calendar)
+    document.querySelectorAll('.workflow-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.workflow-view-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentWorkflowView = btn.getAttribute('data-flow-view') || 'kanban';
+
+        if (kanbanSectionWrap) kanbanSectionWrap.style.display = (currentWorkflowView === 'kanban') ? 'block' : 'none';
+        if (timelineSectionWrap) timelineSectionWrap.style.display = (currentWorkflowView === 'timeline') ? 'block' : 'none';
+        if (calendarSectionWrap) calendarSectionWrap.style.display = (currentWorkflowView === 'calendar') ? 'block' : 'none';
+
+        renderWorkflowActiveView();
+      });
+    });
+
+    if (timelinePrevBtn) {
+      timelinePrevBtn.addEventListener('click', () => {
+        timelineWindowStart.setDate(timelineWindowStart.getDate() - 7);
+        renderTimelineView();
+      });
+    }
+    if (timelineTodayBtn) {
+      timelineTodayBtn.addEventListener('click', () => {
+        timelineWindowStart = new Date();
+        timelineWindowStart.setDate(timelineWindowStart.getDate() - 3);
+        renderTimelineView();
+      });
+    }
+    if (timelineNextBtn) {
+      timelineNextBtn.addEventListener('click', () => {
+        timelineWindowStart.setDate(timelineWindowStart.getDate() + 7);
+        renderTimelineView();
+      });
+    }
+
+    if (calendarPrevMonthBtn) {
+      calendarPrevMonthBtn.addEventListener('click', () => {
+        calendarCurrentDate.setMonth(calendarCurrentDate.getMonth() - 1);
+        renderCalendarView();
+      });
+    }
+    if (calendarTodayBtn) {
+      calendarTodayBtn.addEventListener('click', () => {
+        calendarCurrentDate = new Date();
+        renderCalendarView();
+      });
+    }
+    if (calendarNextMonthBtn) {
+      calendarNextMonthBtn.addEventListener('click', () => {
+        calendarCurrentDate.setMonth(calendarCurrentDate.getMonth() + 1);
+        renderCalendarView();
       });
     }
 
@@ -1155,7 +1235,7 @@
     if (domain === 'board') {
       renderAll();
     } else if (domain === 'kanban') {
-      renderKanbanView();
+      renderWorkflowActiveView();
       updateTabCounts();
     } else if (domain === 'documents') {
       checkServer().then(() => loadFoldersAndDocuments());
@@ -1730,7 +1810,7 @@
   function renderAll() {
     renderTagChips();
     if (currentDomain === 'kanban') {
-      renderKanbanView();
+      renderWorkflowActiveView();
     } else {
       renderCards();
     }
@@ -2025,6 +2105,271 @@
       colEl.appendChild(bodyEl);
       kanbanBoardContainer.appendChild(colEl);
     });
+  }
+
+  function renderWorkflowActiveView() {
+    if (currentWorkflowView === 'timeline') {
+      renderTimelineView();
+    } else if (currentWorkflowView === 'calendar') {
+      renderCalendarView();
+    } else {
+      renderKanbanView();
+    }
+  }
+
+  function renderTimelineView() {
+    if (!timelineGanttWrapper) return;
+    timelineGanttWrapper.innerHTML = '';
+
+    const kanbanTasks = cards.filter(c => isKanbanTask(c));
+    const parsedQuery = metaEngine.parseQuery(searchQuery);
+    const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
+
+    // Timeline Window: 14 days
+    const totalDays = 14;
+    const days = [];
+    const startDate = new Date(timelineWindowStart);
+    startDate.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(startDate);
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+
+    const endDate = days[days.length - 1];
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+    if (timelineRangeLabel) {
+      timelineRangeLabel.textContent = `${startDate.getDate()} ${monthNames[startDate.getMonth()]} - ${endDate.getDate()} ${monthNames[endDate.getMonth()]} ${endDate.getFullYear()}`;
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // Build Table
+    const tableEl = document.createElement('div');
+    tableEl.className = 'gantt-table';
+
+    // Sidebar
+    const sidebarEl = document.createElement('div');
+    sidebarEl.className = 'gantt-sidebar';
+    sidebarEl.innerHTML = `<div class="gantt-sidebar-header">📋 Tugas & Aktivitas (${filteredTasks.length})</div>`;
+
+    // Canvas
+    const canvasEl = document.createElement('div');
+    canvasEl.className = 'gantt-canvas';
+
+    // Canvas Header (Dates)
+    const headerDatesEl = document.createElement('div');
+    headerDatesEl.className = 'gantt-header-dates';
+    days.forEach(d => {
+      const dStr = d.toISOString().slice(0, 10);
+      const isToday = (dStr === todayStr);
+      const col = document.createElement('div');
+      col.className = `gantt-header-date-col ${isToday ? 'is-today' : ''}`;
+      col.innerHTML = `<span>${dayNames[d.getDay()]}</span><strong>${d.getDate()}</strong>`;
+      headerDatesEl.appendChild(col);
+    });
+    canvasEl.appendChild(headerDatesEl);
+
+    if (filteredTasks.length === 0) {
+      const emptyRow = document.createElement('div');
+      emptyRow.className = 'gantt-sidebar-row';
+      emptyRow.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">Belum ada tugas</span>`;
+      sidebarEl.appendChild(emptyRow);
+
+      const emptyCanvasRow = document.createElement('div');
+      emptyCanvasRow.className = 'gantt-track-row';
+      emptyCanvasRow.innerHTML = `<span style="padding-left:1rem; color:var(--text-muted); font-style:italic;">Tugas alur kerja akan muncul sebagai bar horizontal di sini</span>`;
+      canvasEl.appendChild(emptyCanvasRow);
+    } else {
+      filteredTasks.forEach(task => {
+        const colDef = KANBAN_COLUMNS.find(c => c.id === task.status) || KANBAN_COLUMNS[1];
+
+        // Sidebar row
+        const rowSidebar = document.createElement('div');
+        rowSidebar.className = 'gantt-sidebar-row';
+        rowSidebar.innerHTML = `
+          <span class="gantt-task-name" title="${escapeHtml(task.title)}">${escapeHtml(task.title)}</span>
+          <span class="card-status-badge status-${task.status}" style="font-size:0.65rem; padding:1px 6px;">
+            ${colDef.icon} ${colDef.label}
+          </span>
+        `;
+        rowSidebar.addEventListener('click', () => openCardModal(task));
+        sidebarEl.appendChild(rowSidebar);
+
+        // Track row in canvas
+        const trackRow = document.createElement('div');
+        trackRow.className = 'gantt-track-row';
+
+        // Background columns
+        days.forEach(d => {
+          const dStr = d.toISOString().slice(0, 10);
+          const gridCol = document.createElement('div');
+          gridCol.className = `gantt-grid-col ${dStr === todayStr ? 'is-today' : ''}`;
+          trackRow.appendChild(gridCol);
+        });
+
+        // Compute bar span
+        const taskStartStr = task.startDate || (task.createdAt ? task.createdAt.slice(0, 10) : todayStr);
+        const taskDueStr = task.dueDate || (task.reminder && task.reminder.datetime ? task.reminder.datetime.slice(0, 10) : taskStartStr);
+
+        const taskStartDate = new Date(taskStartStr + 'T00:00:00');
+        const taskDueDate = new Date(taskDueStr + 'T23:59:59');
+
+        const windowStartTime = startDate.getTime();
+        const windowEndTime = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59).getTime();
+        const windowDuration = windowEndTime - windowStartTime;
+
+        // Check if overlaps window
+        if (taskDueDate.getTime() >= windowStartTime && taskStartDate.getTime() <= windowEndTime) {
+          const clampedStart = Math.max(taskStartDate.getTime(), windowStartTime);
+          const clampedEnd = Math.min(taskDueDate.getTime(), windowEndTime);
+
+          const leftPercent = ((clampedStart - windowStartTime) / windowDuration) * 100;
+          const widthPercent = Math.max(2.5, ((clampedEnd - clampedStart) / windowDuration) * 100);
+
+          const barEl = document.createElement('div');
+          barEl.className = `gantt-bar-item status-${task.status}`;
+          barEl.style.left = `${leftPercent}%`;
+          barEl.style.width = `${widthPercent}%`;
+          barEl.style.backgroundColor = colDef.color;
+          barEl.textContent = task.title;
+          barEl.title = `${task.title} (${colDef.label}) : ${taskStartStr} s/d ${taskDueStr}`;
+
+          barEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openCardModal(task);
+          });
+
+          trackRow.appendChild(barEl);
+        }
+
+        canvasEl.appendChild(trackRow);
+      });
+    }
+
+    tableEl.appendChild(sidebarEl);
+    tableEl.appendChild(canvasEl);
+    timelineGanttWrapper.appendChild(tableEl);
+  }
+
+  function renderCalendarView() {
+    if (!calendarGridContainer) return;
+    calendarGridContainer.innerHTML = '';
+
+    const kanbanTasks = cards.filter(c => isKanbanTask(c));
+    const parsedQuery = metaEngine.parseQuery(searchQuery);
+    const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
+
+    const year = calendarCurrentDate.getFullYear();
+    const month = calendarCurrentDate.getMonth();
+
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const dayHeaders = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
+
+    if (calendarMonthLabel) {
+      calendarMonthLabel.textContent = `${monthNames[month]} ${year}`;
+    }
+
+    // 1. Day headers
+    dayHeaders.forEach(dh => {
+      const h = document.createElement('div');
+      h.className = 'calendar-day-header';
+      h.textContent = dh;
+      calendarGridContainer.appendChild(h);
+    });
+
+    // 2. Month math
+    const firstDayIndex = (new Date(year, month, 1).getDay() + 6) % 7; // Monday = 0
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const prevMonthDays = new Date(year, month, 0).getDate();
+
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    // Total cells = 35 or 42
+    const totalCells = (firstDayIndex + daysInMonth > 35) ? 42 : 35;
+
+    for (let i = 0; i < totalCells; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'calendar-day-cell';
+
+      let cellDateNumber = 0;
+      let cellDateStr = '';
+
+      if (i < firstDayIndex) {
+        // Prev month
+        cellDateNumber = prevMonthDays - firstDayIndex + i + 1;
+        cell.classList.add('other-month');
+        const prevMonth = month === 0 ? 11 : month - 1;
+        const prevYear = month === 0 ? year - 1 : year;
+        cellDateStr = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${String(cellDateNumber).padStart(2, '0')}`;
+      } else if (i >= firstDayIndex + daysInMonth) {
+        // Next month
+        cellDateNumber = i - (firstDayIndex + daysInMonth) + 1;
+        cell.classList.add('other-month');
+        const nextMonth = month === 11 ? 0 : month + 1;
+        const nextYear = month === 11 ? year + 1 : year;
+        cellDateStr = `${nextYear}-${String(nextMonth + 1).padStart(2, '0')}-${String(cellDateNumber).padStart(2, '0')}`;
+      } else {
+        // Current month
+        cellDateNumber = i - firstDayIndex + 1;
+        cellDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(cellDateNumber).padStart(2, '0')}`;
+      }
+
+      if (cellDateStr === todayStr) {
+        cell.classList.add('is-today');
+      }
+
+      // Top row in cell
+      const topRow = document.createElement('div');
+      topRow.className = 'calendar-cell-top';
+      topRow.innerHTML = `<span class="calendar-date-number">${cellDateNumber}</span>`;
+      cell.appendChild(topRow);
+
+      // Tasks for this date
+      const tasksOnDate = filteredTasks.filter(t => {
+        const start = t.startDate || (t.createdAt ? t.createdAt.slice(0, 10) : null);
+        const due = t.dueDate || (t.reminder && t.reminder.datetime ? t.reminder.datetime.slice(0, 10) : start);
+        if (!due && !start) return false;
+        if (start && due && start <= due) {
+          return cellDateStr >= start && cellDateStr <= due;
+        }
+        return cellDateStr === (due || start);
+      });
+
+      tasksOnDate.slice(0, 3).forEach(task => {
+        const colDef = KANBAN_COLUMNS.find(c => c.id === task.status) || KANBAN_COLUMNS[1];
+        const chip = document.createElement('div');
+        chip.className = `calendar-task-chip status-${task.status}`;
+        chip.style.backgroundColor = 'var(--bg-hover)';
+        chip.style.borderColor = colDef.color;
+        chip.innerHTML = `<span>${colDef.icon}</span><span style="overflow:hidden;text-overflow:ellipsis;">${escapeHtml(task.title)}</span>`;
+        chip.title = `${task.title} (${colDef.label})`;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openCardModal(task);
+        });
+        cell.appendChild(chip);
+      });
+
+      if (tasksOnDate.length > 3) {
+        const moreLabel = document.createElement('span');
+        moreLabel.style.fontSize = '0.68rem';
+        moreLabel.style.color = 'var(--text-muted)';
+        moreLabel.textContent = `+${tasksOnDate.length - 3} lainnya`;
+        cell.appendChild(moreLabel);
+      }
+
+      // Clicking day cell creates task for this date
+      cell.addEventListener('click', () => {
+        openCardModal(null, 'kanban', 'todo', cellDateStr);
+      });
+
+      calendarGridContainer.appendChild(cell);
+    }
   }
 
   function setupFreeCardPosition(cardEl, card, index, container) {
@@ -2622,7 +2967,7 @@
     }
   }
 
-  function openCardModal(card = null, defaultTarget = null, defaultStatus = 'todo') {
+  function openCardModal(card = null, defaultTarget = null, defaultStatus = 'todo', defaultDate = null) {
     cardForm.reset();
     editingChecklist = [];
     editingAttachments = [];
@@ -2638,18 +2983,24 @@
     // Populate schema fields into container
     renderMetadataFormFields(card ? card.metadata : {});
 
-    // Target Board & Status Setup
+    // Target Board, Status & Date Range Setup
     const isTask = card ? isKanbanTask(card) : (defaultTarget === 'kanban' || currentDomain === 'kanban');
     if (isTask) {
       if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.add('active');
       if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.remove('active');
       if (formStatusRow) formStatusRow.style.display = 'flex';
+      if (formDateRangeRow) formDateRangeRow.style.display = 'flex';
       if (formStatus) formStatus.value = (card && card.status) ? card.status : (defaultStatus || 'todo');
+      if (formStartDate) formStartDate.value = card ? (card.startDate || '') : (defaultDate || new Date().toISOString().slice(0, 10));
+      if (formDueDate) formDueDate.value = card ? (card.dueDate || '') : (defaultDate || '');
     } else {
       if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.add('active');
       if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.remove('active');
       if (formStatusRow) formStatusRow.style.display = 'none';
+      if (formDateRangeRow) formDateRangeRow.style.display = 'none';
       if (formStatus) formStatus.value = '';
+      if (formStartDate) formStartDate.value = '';
+      if (formDueDate) formDueDate.value = '';
     }
 
     if (card) {
@@ -2894,6 +3245,8 @@
       id,
       title,
       status: assignedStatus,
+      startDate: isKanban ? (formStartDate && formStartDate.value ? formStartDate.value : null) : null,
+      dueDate: isKanban ? (formDueDate && formDueDate.value ? formDueDate.value : null) : null,
       content: formContent.value.trim(),
       color: selectedColor,
       pinned: formPinned.checked,
