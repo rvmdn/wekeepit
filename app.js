@@ -112,16 +112,23 @@
     return null;
   }
 
-  // Workflow Sub-Views State & Elements (Kanban / Timeline / Calendar)
-  let currentWorkflowView = 'kanban'; // 'kanban', 'timeline', 'calendar'
+  // Workflow Sub-Views State & Elements (Kanban / Timeline / Calendar / Table)
+  let currentWorkflowView = 'kanban'; // 'kanban', 'timeline', 'calendar', 'table'
   let timelineWindowStart = new Date();
   timelineWindowStart.setDate(timelineWindowStart.getDate() - 3);
   let calendarCurrentDate = new Date();
+  let tableSortKey = 'title';
+  let tableSortDirection = 'asc';
+  let tableFilterText = '';
 
   const workflowViewToggle = document.getElementById('workflowViewToggle');
   const kanbanSectionWrap = document.getElementById('kanbanSectionWrap');
   const timelineSectionWrap = document.getElementById('timelineSectionWrap');
   const calendarSectionWrap = document.getElementById('calendarSectionWrap');
+  const tableSectionWrap = document.getElementById('tableSectionWrap');
+  const tableTotalCount = document.getElementById('tableTotalCount');
+  const tableQuickFilter = document.getElementById('tableQuickFilter');
+  const flowTableBody = document.getElementById('flowTableBody');
   const timelineGanttWrapper = document.getElementById('timelineGanttWrapper');
   const timelineRangeLabel = document.getElementById('timelineRangeLabel');
   const timelinePrevBtn = document.getElementById('timelinePrevBtn');
@@ -759,7 +766,7 @@
       });
     }
 
-    // Workflow View Switcher (Kanban vs Timeline vs Calendar)
+    // Workflow View Switcher (Kanban vs Timeline vs Calendar vs Table)
     document.querySelectorAll('.workflow-view-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.workflow-view-btn').forEach(b => b.classList.remove('active'));
@@ -769,10 +776,32 @@
         if (kanbanSectionWrap) kanbanSectionWrap.style.display = (currentWorkflowView === 'kanban') ? 'block' : 'none';
         if (timelineSectionWrap) timelineSectionWrap.style.display = (currentWorkflowView === 'timeline') ? 'block' : 'none';
         if (calendarSectionWrap) calendarSectionWrap.style.display = (currentWorkflowView === 'calendar') ? 'block' : 'none';
+        if (tableSectionWrap) tableSectionWrap.style.display = (currentWorkflowView === 'table') ? 'block' : 'none';
 
         renderWorkflowActiveView();
       });
     });
+
+    // Table Column Sorting Listeners
+    document.querySelectorAll('.flow-database-table th.sortable-th').forEach(th => {
+      th.addEventListener('click', () => {
+        const sortKey = th.getAttribute('data-sort-key');
+        if (tableSortKey === sortKey) {
+          tableSortDirection = (tableSortDirection === 'asc') ? 'desc' : 'asc';
+        } else {
+          tableSortKey = sortKey;
+          tableSortDirection = 'asc';
+        }
+        renderTableView();
+      });
+    });
+
+    if (tableQuickFilter) {
+      tableQuickFilter.addEventListener('input', (e) => {
+        tableFilterText = e.target.value.trim().toLowerCase();
+        renderTableView();
+      });
+    }
 
     if (timelinePrevBtn) {
       timelinePrevBtn.addEventListener('click', () => {
@@ -2162,9 +2191,188 @@
       renderTimelineView();
     } else if (currentWorkflowView === 'calendar') {
       renderCalendarView();
+    } else if (currentWorkflowView === 'table') {
+      renderTableView();
     } else {
       renderKanbanView();
     }
+  }
+
+  function renderTableView() {
+    if (!flowTableBody) return;
+    flowTableBody.innerHTML = '';
+
+    const kanbanTasks = cards.filter(c => !c.archived && isKanbanTask(c));
+    const parsedQuery = metaEngine.parseQuery(searchQuery);
+    let filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
+
+    // Secondary table quick filter
+    if (tableFilterText) {
+      filteredTasks = filteredTasks.filter(t => {
+        const titleMatch = (t.title || '').toLowerCase().includes(tableFilterText);
+        const statusMatch = (t.status || '').toLowerCase().includes(tableFilterText);
+        const priorityMatch = ((t.priority || (t.metadata && t.metadata.priority)) || '').toLowerCase().includes(tableFilterText);
+        const tagsMatch = Array.isArray(t.tags) && t.tags.some(tag => tag.toLowerCase().includes(tableFilterText));
+        return titleMatch || statusMatch || priorityMatch || tagsMatch;
+      });
+    }
+
+    if (tableTotalCount) {
+      tableTotalCount.textContent = `${filteredTasks.length} Tugas Terdaftar`;
+    }
+
+    // Sort order mapping
+    const STATUS_RANK = { backlog: 0, todo: 1, in_progress: 2, review: 3, done: 4 };
+    const PRIORITY_RANK = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+    filteredTasks.sort((a, b) => {
+      let valA, valB;
+      if (tableSortKey === 'status') {
+        valA = STATUS_RANK[a.status] !== undefined ? STATUS_RANK[a.status] : 99;
+        valB = STATUS_RANK[b.status] !== undefined ? STATUS_RANK[b.status] : 99;
+      } else if (tableSortKey === 'priority') {
+        const pA = getCardPriority(a);
+        const pB = getCardPriority(b);
+        valA = pA ? PRIORITY_RANK[pA.id] : 99;
+        valB = pB ? PRIORITY_RANK[pB.id] : 99;
+      } else if (tableSortKey === 'dueDate') {
+        valA = a.dueDate || (a.reminder && a.reminder.datetime ? a.reminder.datetime.slice(0, 10) : a.startDate) || '9999-99-99';
+        valB = b.dueDate || (b.reminder && b.reminder.datetime ? b.reminder.datetime.slice(0, 10) : b.startDate) || '9999-99-99';
+      } else if (tableSortKey === 'checklist') {
+        const lenA = Array.isArray(a.checklist) ? a.checklist.length : 0;
+        const compA = lenA ? a.checklist.filter(c => c.done).length : 0;
+        const lenB = Array.isArray(b.checklist) ? b.checklist.length : 0;
+        const compB = lenB ? b.checklist.filter(c => c.done).length : 0;
+        valA = lenA ? (compA / lenA) : -1;
+        valB = lenB ? (compB / lenB) : -1;
+      } else {
+        // default: title
+        valA = (a.title || '').toLowerCase();
+        valB = (b.title || '').toLowerCase();
+      }
+
+      let cmp = 0;
+      if (typeof valA === 'string') {
+        cmp = valA.localeCompare(valB);
+      } else {
+        cmp = valA > valB ? 1 : (valA < valB ? -1 : 0);
+      }
+      return tableSortDirection === 'asc' ? cmp : -cmp;
+    });
+
+    // Update Header Sort Icons
+    document.querySelectorAll('.flow-database-table th.sortable-th').forEach(th => {
+      const key = th.getAttribute('data-sort-key');
+      const icon = th.querySelector('.sort-icon');
+      if (key === tableSortKey) {
+        th.classList.add('active-sort');
+        if (icon) icon.textContent = tableSortDirection === 'asc' ? '▲' : '▼';
+      } else {
+        th.classList.remove('active-sort');
+        if (icon) icon.textContent = '↕';
+      }
+    });
+
+    if (filteredTasks.length === 0) {
+      const emptyRow = document.createElement('tr');
+      emptyRow.className = 'table-empty-row';
+      emptyRow.innerHTML = `<td colspan="7">Tidak ada tugas alur kerja yang cocok dengan filter</td>`;
+      flowTableBody.appendChild(emptyRow);
+      return;
+    }
+
+    filteredTasks.forEach(task => {
+      const row = document.createElement('tr');
+      const colDef = KANBAN_COLUMNS.find(c => c.id === task.status) || KANBAN_COLUMNS[1];
+      const pInfo = getCardPriority(task);
+
+      // Date string
+      let dateDisplay = '—';
+      if (task.startDate && task.dueDate) {
+        dateDisplay = `${task.startDate} s.d. ${task.dueDate}`;
+      } else if (task.dueDate) {
+        dateDisplay = `🎯 ${task.dueDate}`;
+      } else if (task.startDate) {
+        dateDisplay = `📅 ${task.startDate}`;
+      } else if (task.reminder && task.reminder.datetime) {
+        dateDisplay = `⏰ ${task.reminder.datetime.slice(0, 10)}`;
+      }
+
+      // Checklist progress
+      let checklistDisplay = '—';
+      if (Array.isArray(task.checklist) && task.checklist.length > 0) {
+        const total = task.checklist.length;
+        const completed = task.checklist.filter(c => c.done).length;
+        const percentage = Math.round((completed / total) * 100);
+        const isComplete = (completed === total);
+        checklistDisplay = `
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div class="checklist-progress-track" style="width: 50px; flex:none;">
+              <div class="checklist-progress-fill ${isComplete ? 'is-complete' : ''}" style="width: ${percentage}%"></div>
+            </div>
+            <span class="checklist-progress-badge ${isComplete ? 'is-complete' : ''}" style="font-size:0.68rem; padding:1px 4px;">
+              ${completed}/${total}
+            </span>
+          </div>
+        `;
+      }
+
+      // Tags display
+      let tagsDisplay = '';
+      if (Array.isArray(task.tags) && task.tags.length > 0) {
+        tagsDisplay = task.tags.slice(0, 3).map(t => `<span class="card-tag-pill" style="--tag-color:${metaEngine.getTagColor(t)}; font-size:0.65rem; padding:1px 5px; cursor:pointer;" data-tag="${escapeHtml(t)}">#${escapeHtml(t)}</span>`).join(' ');
+      } else {
+        tagsDisplay = '<span style="color:var(--text-muted); font-size:0.75rem;">—</span>';
+      }
+
+      row.innerHTML = `
+        <td>
+          <div class="table-task-title-cell" title="Klik untuk edit tugas">
+            <span style="color: ${task.color || 'var(--accent-primary)'}; font-size: 0.9rem;">●</span>
+            <span>${escapeHtml(task.title || 'Tanpa Judul')}</span>
+          </div>
+        </td>
+        <td>
+          <span class="card-status-badge status-${task.status}">
+            ${colDef.icon} ${colDef.label}
+          </span>
+        </td>
+        <td>
+          ${pInfo ? `<span class="card-priority-badge priority-${pInfo.id}">${pInfo.shortLabel}</span>` : '<span style="color:var(--text-muted); font-size:0.75rem;">—</span>'}
+        </td>
+        <td style="font-size: 0.78rem;">
+          ${dateDisplay}
+        </td>
+        <td>
+          ${checklistDisplay}
+        </td>
+        <td>
+          ${tagsDisplay}
+        </td>
+        <td style="text-align: center;">
+          <div style="display:inline-flex; gap:4px;">
+            <button type="button" class="btn btn-icon-only" data-action="edit" title="Edit Tugas" style="width:26px; height:26px; font-size:0.75rem; padding:0;">✏️</button>
+            <button type="button" class="btn btn-icon-only" data-action="delete" title="Pindahkan ke Arsip & Sampah" style="width:26px; height:26px; font-size:0.75rem; padding:0;">🗑️</button>
+          </div>
+        </td>
+      `;
+
+      // Title click opens modal
+      row.querySelector('.table-task-title-cell').addEventListener('click', () => openCardModal(task));
+      // Action buttons
+      row.querySelector('[data-action="edit"]').addEventListener('click', () => openCardModal(task));
+      row.querySelector('[data-action="delete"]').addEventListener('click', () => archiveCard(task.id));
+
+      // Tag click filters
+      row.querySelectorAll('[data-tag]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          handleTagChipClick(el.getAttribute('data-tag'));
+        });
+      });
+
+      flowTableBody.appendChild(row);
+    });
   }
 
   function renderTimelineView() {

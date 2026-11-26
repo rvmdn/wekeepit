@@ -4880,3 +4880,154 @@ body.font-mono * {
   padding: 3rem 1rem;
   text-align: center;
 }
+
+/* --- WORKFLOW TABLE / DATABASE VIEW (NOTION STYLE) --- */
+.table-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.table-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.table-view-badge {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.table-sort-hint {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.table-quick-filter-input {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  outline: none;
+  width: 220px;
+  transition: all 0.15s ease;
+}
+
+.table-quick-filter-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.table-scroll-container {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-base);
+  scrollbar-width: thin;
+}
+
+.flow-database-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.82rem;
+  min-width: 880px;
+}
+
+.flow-database-table thead th {
+  background: var(--bg-hover);
+  padding: 10px 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.flow-database-table thead th:last-child {
+  border-right: none;
+}
+
+.flow-database-table th.sortable-th {
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.flow-database-table th.sortable-th:hover {
+  background: var(--bg-active);
+  color: var(--accent-primary);
+}
+
+.flow-database-table th.sortable-th.active-sort {
+  color: var(--accent-primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.flow-database-table th .sort-icon {
+  font-size: 0.72rem;
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+.flow-database-table th.active-sort .sort-icon {
+  opacity: 1;
+  font-weight: 800;
+}
+
+.flow-database-table tbody tr {
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.12s ease;
+}
+
+.flow-database-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.flow-database-table tbody td {
+  padding: 10px 14px;
+  vertical-align: middle;
+  color: var(--text-secondary);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.flow-database-table tbody td:last-child {
+  border-right: none;
+}
+
+.table-task-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.table-task-title-cell:hover {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
+.table-empty-row td {
+  text-align: center;
+  padding: 3rem 1rem !important;
+  color: var(--text-muted);
+  font-style: italic;
+}

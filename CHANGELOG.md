@@ -8,6 +8,7 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 ## [2.3.0] - 2026-11-26
 
 ### Ditambahkan (Added)
+- **Table / Database View (Notion-Style Spreadsheet)**: Sudut pandang ke-4 pada alur kerja (`📑 Tabel`) berbentuk tabel data padat dengan kolom *Judul Tugas*, *Status*, *Prioritas*, *Tenggat / Waktu*, *Checklist*, *Tags*, dan *Aksi*. Dilengkapi pengurutan interaktif (klik header untuk sortir naik/turun dengan indikator ▲/▼) serta filter pencarian instan pada tabel.
 - **Kotak Arsip & Sampah (Soft Delete & Restore)**: Mencegah kehilangan data catatan penting akibat klik hapus tidak sengaja. Klik tombol 🗑️ kini memindahkan kartu secara aman ke Kotak Arsip & Sampah (`archived: true`). Pengguna dapat membuka modal `📦 Arsip` melalui tombol header untuk memulihkan kartu (*Restore*), menghapus secara permanen, atau mengosongkan semua sampah (*Empty Trash*).
 - **Indikator Prioritas First-Class (Trello/Notion Style)**: Menambahkan tingkat prioritas visual (`🔥 Urgent / P0`, `⚡ High / P1`, `📌 Medium / P2`, `☕ Low / P3`) dengan badge berkode warna di header kartu, penanda garis aksen 3.5px di sisi kiri kartu, indikator pada sidebar Timeline Gantt, dan chip Kalender.
 - **Selector Prioritas Terintegrasi**: Dropdown pemilihan prioritas langsung di modal editor kartu untuk Catatan Notice Board maupun Tugas Kanban Flow, dengan sinkronisasi otomatis ke skema metadata tanpa duplikasi tampilan baris.
