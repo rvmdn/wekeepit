@@ -150,7 +150,7 @@ public partial class Form1 : Form
 
     private void SetupWindow()
     {
-        this.Text = "WeKeepIt v2.0 - Desktop Card Notepad & Document Vault";
+        this.Text = "WeKeepIt v2.2 - Desktop Card Notepad & Document Vault";
 
         // Base resolution 1366x768, adapted dynamically to display working area
         var workingArea = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1366, 768);
@@ -209,7 +209,7 @@ public partial class Form1 : Form
 
         notifyIcon = new NotifyIcon
         {
-            Text = "WeKeepIt v2.0 - Card Notepad & Vault",
+            Text = "WeKeepIt v2.2 - Card Notepad & Vault",
             Icon = this.Icon ?? SystemIcons.Application,
             ContextMenuStrip = trayMenu,
             Visible = true

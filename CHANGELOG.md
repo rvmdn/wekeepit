@@ -5,6 +5,17 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 
 ---
 
+## [2.2.0] - 2026-11-26
+
+### Diperbaiki (Fixed)
+- **Dynamic Centering & Viewport Containment Modal**: Menghapus `backdrop-filter: blur(28px)` pada `body.theme-acrylic` yang memicu W3C CSS containing block bug (di mana fixed overlay melebar mengikuti tinggi total dokumen ribuan piksel).
+- **Penetapan Viewport Modal Overlay**: Memastikan `.modal-overlay` menggunakan ukuran pasti `100vw` dan `100vh` dengan `max-height: 100vh`, `overflow: hidden`, dan `display: flex; align-items: center; justify-content: center;` untuk pemusatan pixel-perfect di semua resolusi layar (laptop, desktop, ultrawide).
+- **Pencegahan Scroll Jump Saat Modal Buka**: Menambahkan `{ preventScroll: true }` pada pemanggilan `.focus()` saat modal dibuka agar halaman latar belakang tidak melompat.
+- **Hoisting Helper Modal ke Global Module Scope**: Mengangkat fungsi `showModalOverlay()`, `hideModalOverlay()`, dan `triggerStaticModal()` ke module scope teratas di `app.js` untuk mencegah `ReferenceError` saat pembukaan modal.
+- **Pembersihan Metadata URL pada Catatan**: Menormalkan skema kartu agar tautan URL tersimpan rapi di field `metadata.url` tanpa mengotori teks isi catatan.
+
+---
+
 ## [2.1.1] - 2026-11-09
 
 ### Diperbaiki (Fixed)
