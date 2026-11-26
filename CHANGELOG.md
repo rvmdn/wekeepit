@@ -8,6 +8,7 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 ## [2.3.0] - 2026-11-26
 
 ### Ditambahkan (Added)
+- **Kotak Arsip & Sampah (Soft Delete & Restore)**: Mencegah kehilangan data catatan penting akibat klik hapus tidak sengaja. Klik tombol 🗑️ kini memindahkan kartu secara aman ke Kotak Arsip & Sampah (`archived: true`). Pengguna dapat membuka modal `📦 Arsip` melalui tombol header untuk memulihkan kartu (*Restore*), menghapus secara permanen, atau mengosongkan semua sampah (*Empty Trash*).
 - **Indikator Prioritas First-Class (Trello/Notion Style)**: Menambahkan tingkat prioritas visual (`🔥 Urgent / P0`, `⚡ High / P1`, `📌 Medium / P2`, `☕ Low / P3`) dengan badge berkode warna di header kartu, penanda garis aksen 3.5px di sisi kiri kartu, indikator pada sidebar Timeline Gantt, dan chip Kalender.
 - **Selector Prioritas Terintegrasi**: Dropdown pemilihan prioritas langsung di modal editor kartu untuk Catatan Notice Board maupun Tugas Kanban Flow, dengan sinkronisasi otomatis ke skema metadata tanpa duplikasi tampilan baris.
 - **Checklist Progress Bar Visual (Trello-Style)**: Bilah progres checklist modern dengan track 6px, transisi halus, badge persentase penyelesaian (`☑️ 3/5 (60%)`), dan indikator hijau emerald (`✅ 5/5`) saat semua item checklist rampung.

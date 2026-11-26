@@ -4771,3 +4771,112 @@ body.font-mono * {
   transform: translateY(-1px);
   filter: brightness(1.1);
 }
+
+/* --- KOTAK ARSIP & TEMPAT SAMPAH (SOFT DELETE) --- */
+.archive-header-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  background: #ef4444;
+  color: #ffffff;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  line-height: 1;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.archive-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.archive-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: all 0.15s ease;
+}
+
+.archive-item-row:hover {
+  background: var(--bg-active);
+  border-color: var(--border-color);
+}
+
+.archive-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.archive-item-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.archive-item-origin-badge {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+}
+
+.archive-item-meta {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.archive-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-danger-subtle {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: #ef4444 !important;
+  border: 1px solid rgba(239, 68, 68, 0.3) !important;
+  font-size: 0.78rem !important;
+  padding: 4px 8px !important;
+  border-radius: var(--radius-sm) !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-danger-subtle:hover {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+}
+
+.archive-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+}

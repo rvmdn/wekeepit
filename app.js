@@ -238,6 +238,16 @@
   let activeViewerDoc = null;
 
   const schemaModal = document.getElementById('schemaModal');
+
+  // Archive & Trash Bin Modal DOM Elements (Soft Delete)
+  const archiveModal = document.getElementById('archiveModal');
+  const archiveModalBtn = document.getElementById('archiveModalBtn');
+  const closeArchiveModal = document.getElementById('closeArchiveModal');
+  const closeArchiveModalBtn = document.getElementById('closeArchiveModalBtn');
+  const archiveCountBadge = document.getElementById('archiveCountBadge');
+  const archiveTotalBadge = document.getElementById('archiveTotalBadge');
+  const archiveListContainer = document.getElementById('archiveListContainer');
+  const emptyArchiveBtn = document.getElementById('emptyArchiveBtn');
   const schemaFieldsList = document.getElementById('schemaFieldsList');
   const dataModal = document.getElementById('dataModal');
   const reminderToast = document.getElementById('reminderToast');
@@ -978,6 +988,25 @@
     dataModal.addEventListener('click', (e) => {
       if (e.target === dataModal) triggerStaticModal(dataModal);
     });
+
+    // Archive / Soft Delete modal
+    if (archiveModalBtn) {
+      archiveModalBtn.addEventListener('click', openArchiveModal);
+    }
+    if (closeArchiveModal) {
+      closeArchiveModal.addEventListener('click', () => hideModalOverlay(archiveModal));
+    }
+    if (closeArchiveModalBtn) {
+      closeArchiveModalBtn.addEventListener('click', () => hideModalOverlay(archiveModal));
+    }
+    if (emptyArchiveBtn) {
+      emptyArchiveBtn.addEventListener('click', emptyArchive);
+    }
+    if (archiveModal) {
+      archiveModal.addEventListener('click', (e) => {
+        if (e.target === archiveModal) triggerStaticModal(archiveModal);
+      });
+    }
 
     document.getElementById('downloadJsonBtn').addEventListener('click', exportDataJson);
     document.getElementById('triggerImportBtn').addEventListener('click', () => {
@@ -1838,7 +1867,8 @@
   }
 
   function renderTagChips() {
-    const allTags = metaEngine.extractAllTags(cards);
+    const activeCards = cards.filter(c => !c.archived);
+    const allTags = metaEngine.extractAllTags(activeCards);
     const tagBarSection = document.getElementById('tagBarSection');
     tagChipsContainer.innerHTML = '';
 
@@ -1912,8 +1942,8 @@
       filterNotice.style.display = 'none';
     }
 
-    // Filter matching cards: strictly Notice Board notes (non-kanban)
-    const noticeCards = cards.filter(c => !isKanbanTask(c));
+    // Filter matching cards: strictly Notice Board notes (non-kanban, non-archived)
+    const noticeCards = cards.filter(c => !c.archived && !isKanbanTask(c));
     let filtered = noticeCards.filter(card => metaEngine.matches(card, parsedQuery));
 
     // Tab-based filtering
@@ -2019,7 +2049,7 @@
     kanbanBoardContainer.innerHTML = '';
 
     const parsedQuery = metaEngine.parseQuery(searchQuery);
-    const kanbanTasks = cards.filter(c => isKanbanTask(c));
+    const kanbanTasks = cards.filter(c => !c.archived && isKanbanTask(c));
     const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
 
     if (kanbanTotalBadge) {
@@ -2141,7 +2171,7 @@
     if (!timelineGanttWrapper) return;
     timelineGanttWrapper.innerHTML = '';
 
-    const kanbanTasks = cards.filter(c => isKanbanTask(c));
+    const kanbanTasks = cards.filter(c => !c.archived && isKanbanTask(c));
     const parsedQuery = metaEngine.parseQuery(searchQuery);
     const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
 
@@ -2283,7 +2313,7 @@
     if (!calendarGridContainer) return;
     calendarGridContainer.innerHTML = '';
 
-    const kanbanTasks = cards.filter(c => isKanbanTask(c));
+    const kanbanTasks = cards.filter(c => !c.archived && isKanbanTask(c));
     const parsedQuery = metaEngine.parseQuery(searchQuery);
     const filteredTasks = kanbanTasks.filter(c => metaEngine.matches(c, parsedQuery));
 
@@ -2621,7 +2651,7 @@
         <button class="card-action-btn" title="Edit Catatan" data-action="edit">
           ✏️
         </button>
-        <button class="card-action-btn" title="Hapus Catatan" data-action="delete">
+        <button class="card-action-btn" title="Pindahkan ke Kotak Arsip & Sampah" data-action="delete">
           🗑️
         </button>
       </div>
@@ -2693,11 +2723,7 @@
     });
 
     cardEl.querySelector('[data-action="delete"]').addEventListener('click', () => {
-      if (confirm(`Hapus catatan "${card.title}"?`)) {
-        cards = cards.filter(c => c.id !== card.id);
-        saveCards();
-        renderAll();
-      }
+      archiveCard(card.id);
     });
 
     return cardEl;
@@ -2909,8 +2935,10 @@
   }
 
   function updateTabCounts() {
-    const noticeCards = cards.filter(c => !isKanbanTask(c));
-    const kanbanCards = cards.filter(c => isKanbanTask(c));
+    const activeCards = cards.filter(c => !c.archived);
+    const noticeCards = activeCards.filter(c => !isKanbanTask(c));
+    const kanbanCards = activeCards.filter(c => isKanbanTask(c));
+    const archivedCards = cards.filter(c => c.archived);
 
     countAll.textContent = noticeCards.length;
     countPinned.textContent = noticeCards.filter(c => c.pinned).length;
@@ -2925,6 +2953,125 @@
     if (kanbanTotalBadge) {
       kanbanTotalBadge.textContent = `${kanbanCards.length} Tugas`;
     }
+
+    if (archiveCountBadge) {
+      archiveCountBadge.textContent = archivedCards.length;
+      archiveCountBadge.style.display = archivedCards.length > 0 ? 'inline-flex' : 'none';
+    }
+  }
+
+  // --- ARSIP & TEMPAT SAMPAH (SOFT DELETE LOGIC) ---
+  function openArchiveModal() {
+    renderArchiveModal();
+    showModalOverlay(archiveModal);
+  }
+
+  function renderArchiveModal() {
+    if (!archiveListContainer) return;
+    archiveListContainer.innerHTML = '';
+    const archivedCards = cards.filter(c => c.archived);
+    if (archiveTotalBadge) {
+      archiveTotalBadge.textContent = `${archivedCards.length} item`;
+    }
+
+    if (archivedCards.length === 0) {
+      archiveListContainer.innerHTML = `
+        <div class="archive-empty-state">
+          <span style="font-size: 2.2rem; opacity: 0.6;">📦</span>
+          <p style="margin: 8px 0 0; color: var(--text-muted); font-size: 0.88rem;">
+            Kotak arsip & sampah kosong. Tidak ada catatan yang dihapus.
+          </p>
+        </div>
+      `;
+      return;
+    }
+
+    archivedCards.forEach(card => {
+      const isTask = isKanbanTask(card);
+      const pInfo = getCardPriority(card);
+      const dateStr = card.archivedAt ? formatTimeAgo(card.archivedAt) : 'baru saja';
+
+      const row = document.createElement('div');
+      row.className = 'archive-item-row';
+      row.innerHTML = `
+        <div class="archive-item-info">
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            ${pInfo ? `<span class="card-priority-badge priority-${pInfo.id}" style="font-size:0.62rem; padding:1px 4px;">${pInfo.shortLabel}</span>` : ''}
+            <strong class="archive-item-title">${escapeHtml(card.title || 'Tanpa Judul')}</strong>
+            <span class="archive-item-origin-badge">${isTask ? '⚡ Kanban Task' : '📌 Notice Board'}</span>
+          </div>
+          <div class="archive-item-meta">
+            <span>🗑️ Dihapus ${dateStr}</span>
+            ${card.tags && card.tags.length ? `<span>• Tags: ${card.tags.map(t => '#' + escapeHtml(t)).join(' ')}</span>` : ''}
+          </div>
+        </div>
+        <div class="archive-item-actions">
+          <button type="button" class="btn btn-secondary btn-sm" data-action="restore" style="font-size:0.75rem; padding:4px 8px;">
+            🔄 Pulihkan
+          </button>
+          <button type="button" class="btn-danger-subtle" data-action="delete-perm">
+            🗑️ Hapus Permanen
+          </button>
+        </div>
+      `;
+
+      row.querySelector('[data-action="restore"]').addEventListener('click', () => {
+        restoreCard(card.id);
+      });
+
+      row.querySelector('[data-action="delete-perm"]').addEventListener('click', () => {
+        permanentDeleteCard(card.id);
+      });
+
+      archiveListContainer.appendChild(row);
+    });
+  }
+
+  function archiveCard(id) {
+    const card = cards.find(c => c.id === id);
+    if (!card) return;
+    card.archived = true;
+    card.archivedAt = new Date().toISOString();
+    saveCards();
+    renderAll();
+    alertToast(`Catatan "${card.title || 'Tanpa Judul'}" dipindahkan ke Arsip & Sampah 📦`);
+  }
+
+  function restoreCard(id) {
+    const card = cards.find(c => c.id === id);
+    if (!card) return;
+    delete card.archived;
+    delete card.archivedAt;
+    card.updatedAt = new Date().toISOString();
+    saveCards();
+    renderAll();
+    renderArchiveModal();
+    alertToast(`Catatan "${card.title || 'Tanpa Judul'}" berhasil dipulihkan! 🔄`);
+  }
+
+  function permanentDeleteCard(id) {
+    const card = cards.find(c => c.id === id);
+    const title = card ? card.title : 'catatan ini';
+    if (!confirm(`Hapus PERMANEN "${title}"? Data tidak dapat dipulihkan lagi.`)) return;
+    cards = cards.filter(c => c.id !== id);
+    saveCards();
+    renderAll();
+    renderArchiveModal();
+    alertToast(`Catatan telah dihapus secara permanen. 🗑️`);
+  }
+
+  function emptyArchive() {
+    const archivedCount = cards.filter(c => c.archived).length;
+    if (archivedCount === 0) {
+      alertToast('Kotak arsip & sampah sudah kosong.');
+      return;
+    }
+    if (!confirm(`Hapus PERMANEN semua ${archivedCount} kartu di tempat sampah? Tindakan ini tidak dapat dibatalkan.`)) return;
+    cards = cards.filter(c => !c.archived);
+    saveCards();
+    renderAll();
+    renderArchiveModal();
+    alertToast(`Kotak sampah telah dikosongkan. 🧹`);
   }
 
   // --- CARD MODAL / FORM ---
