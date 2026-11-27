@@ -292,6 +292,8 @@
   // Form State
   let editingChecklist = [];
   let editingAttachments = [];
+  let editingComments = [];
+  let editingActivity = [];
   let selectedColor = '#6366f1';
 
   // --- SERVER & API HELPERS ---
@@ -2051,6 +2053,7 @@
     setupCollapsible('toggleChecklist');
     setupCollapsible('toggleAttachments');
     setupCollapsible('toggleReminder');
+    setupCollapsible('toggleCommentsActivity');
 
     // Document Upload & Drop Zone
     if (triggerDocUploadBtn && documentFileInput) {
@@ -2105,6 +2108,17 @@
 
     // Checklist add button
     addChecklistBtn.addEventListener('click', addChecklistItem);
+    const addCommentBtn = document.getElementById('addCommentBtn');
+    const newCommentInput = document.getElementById('newCommentInput');
+    if (addCommentBtn) addCommentBtn.addEventListener('click', addCardComment);
+    if (newCommentInput) {
+      newCommentInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addCardComment();
+        }
+      });
+    }
     newChecklistText.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -3160,6 +3174,7 @@
         if (targetCard && targetCard.status !== col.id) {
           targetCard.status = col.id;
           targetCard.updatedAt = new Date().toISOString();
+          recordCardActivity(targetCard, `memindahkan status ke ${col.label}`);
           await saveSingleCard(targetCard);
           renderKanbanView();
           updateTabCounts();
@@ -4184,11 +4199,16 @@
       `;
     }
 
+    // Comment count badge
+    const commentBadge = (Array.isArray(card.comments) && card.comments.length > 0)
+      ? `<span class="card-comment-badge" title="${card.comments.length} komentar">💬 ${card.comments.length}</span>`
+      : '';
+
     // Time ago
     const timeAgo = formatTimeAgo(card.updatedAt || card.createdAt);
 
     footer.innerHTML = `
-      <div>${reminderEl}</div>
+      <div style="display:flex; align-items:center; gap:6px;">${reminderEl}${commentBadge}</div>
       <div class="card-time">${timeAgo}</div>
     `;
 
@@ -4428,6 +4448,8 @@
     cardForm.reset();
     editingChecklist = [];
     editingAttachments = [];
+    editingComments = [];
+    editingActivity = [];
     selectedColor = '#6366f1';
 
     let initialType = 'note';
@@ -4490,6 +4512,12 @@
       if (Array.isArray(card.attachments)) {
         editingAttachments = JSON.parse(JSON.stringify(card.attachments));
       }
+      if (Array.isArray(card.comments)) {
+        editingComments = JSON.parse(JSON.stringify(card.comments));
+      }
+      if (Array.isArray(card.activity)) {
+        editingActivity = JSON.parse(JSON.stringify(card.activity));
+      }
 
       if (card.reminder) {
         reminderDateTime.value = card.reminder.datetime ? card.reminder.datetime.slice(0, 16) : '';
@@ -4529,6 +4557,7 @@
 
     renderChecklistEditor();
     renderAttachmentsEditor();
+    renderCommentsAndActivity();
 
     // Assignee Picker – show only for Kanban tasks in server mode with >1 user
     const selectedAssignees = card ? (Array.isArray(card.assignees) ? card.assignees : []) : [];
@@ -4665,6 +4694,112 @@
     newChecklistText.focus();
   }
 
+  // --- COMMENTS & ACTIVITY LOG ---
+  function recordCardActivity(card, actionText) {
+    if (!card) return;
+    if (!Array.isArray(card.activity)) card.activity = [];
+    const actorName = currentUser ? (currentUser.displayName || currentUser.username) : 'Pengguna';
+    card.activity.unshift({
+      id: 'act-' + Date.now(),
+      actor: currentUser ? currentUser.username : 'local',
+      actorName,
+      text: actionText,
+      createdAt: new Date().toISOString()
+    });
+    if (card.activity.length > 25) card.activity = card.activity.slice(0, 25);
+  }
+
+  function renderCommentsAndActivity() {
+    const listEl = document.getElementById('cardCommentsList');
+    const countEl = document.getElementById('commentsCountPreview');
+    const actSection = document.getElementById('cardActivityLogSection');
+    const actList = document.getElementById('cardActivityList');
+    const inputRow = document.getElementById('commentInputRow');
+    if (!listEl) return;
+
+    const isViewerShared = document.body.classList.contains('role-viewer') && !editingIsPersonal;
+    if (inputRow) inputRow.style.display = isViewerShared ? 'none' : 'flex';
+
+    if (countEl) countEl.textContent = editingComments.length;
+
+    if (editingComments.length === 0) {
+      listEl.innerHTML = '<div style="font-size:0.76rem; color:var(--text-muted); padding:4px 0;">Belum ada komentar.</div>';
+    } else {
+      listEl.innerHTML = editingComments.map((c, idx) => {
+        const canDelete = !isViewerShared && (
+          !authEnabled ||
+          (currentUser && (currentUser.role === 'admin' || currentUser.username === c.author))
+        );
+        return `
+          <div class="comment-item">
+            <div class="comment-header">
+              <strong>${escapeHtml(c.authorName || c.author || 'Pengguna')}</strong>
+              <span class="comment-time">${formatTimeAgo(c.createdAt)}</span>
+              ${canDelete ? `<button type="button" class="comment-del-btn" data-idx="${idx}" title="Hapus komentar">✕</button>` : ''}
+            </div>
+            <div class="comment-body">${escapeHtml(c.text || '')}</div>
+          </div>
+        `;
+      }).join('');
+
+      listEl.querySelectorAll('.comment-del-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const i = Number(btn.getAttribute('data-idx'));
+          if (!Number.isNaN(i)) {
+            editingComments.splice(i, 1);
+            renderCommentsAndActivity();
+          }
+        });
+      });
+    }
+
+    if (actSection && actList) {
+      if (editingActivity.length === 0) {
+        actSection.style.display = 'none';
+        actList.innerHTML = '';
+      } else {
+        actSection.style.display = 'block';
+        actList.innerHTML = editingActivity.slice(0, 10).map(a => `
+          <div class="activity-item">
+            <span><strong>${escapeHtml(a.actorName || a.actor || 'Pengguna')}</strong> ${escapeHtml(a.text || '')}</span>
+            <span class="activity-time">${formatTimeAgo(a.createdAt)}</span>
+          </div>
+        `).join('');
+      }
+    }
+  }
+
+  async function addCardComment() {
+    const input = document.getElementById('newCommentInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) return;
+
+    const author = currentUser ? currentUser.username : 'local';
+    const authorName = currentUser ? (currentUser.displayName || currentUser.username) : 'Pengguna';
+    editingComments.push({
+      id: 'cmt-' + Date.now() + Math.random().toString(36).slice(2, 5),
+      author,
+      authorName,
+      text,
+      createdAt: new Date().toISOString()
+    });
+    input.value = '';
+    renderCommentsAndActivity();
+
+    // If editing an existing shared card, persist comment immediately
+    const existingId = editCardId.value;
+    if (existingId && !editingIsPersonal) {
+      const existing = cards.find(c => c.id === existingId);
+      if (existing) {
+        existing.comments = JSON.parse(JSON.stringify(editingComments));
+        existing.updatedAt = new Date().toISOString();
+        await saveSingleCard(existing);
+        renderAll();
+      }
+    }
+  }
+
   function applyReminderPreset(preset) {
     const now = new Date();
     if (preset === '1h') {
@@ -4757,6 +4892,18 @@
       delete metadata.prioritas;
     }
 
+    const actorName = currentUser ? (currentUser.displayName || currentUser.username) : 'Pengguna';
+    const nextActivity = [
+      {
+        id: 'act-' + Date.now(),
+        actor: currentUser ? currentUser.username : 'local',
+        actorName,
+        text: isNew ? 'membuat kartu' : 'memperbarui catatan/tugas',
+        createdAt: new Date().toISOString()
+      },
+      ...editingActivity
+    ].slice(0, 25);
+
     const existingCard = cards.find(c => c.id === id);
     const cardPayload = {
       id,
@@ -4774,6 +4921,8 @@
       attachments: editingAttachments,
       reminder,
       assignees,
+      comments: editingComments,
+      activity: nextActivity,
       updatedAt: new Date().toISOString()
     };
 

@@ -720,6 +720,25 @@
               </div>
             </div>
           </div>
+
+          <!-- Section: Komentar & Riwayat Aktivitas -->
+          <div class="form-group-collapsible" id="commentsActivityCollapsible">
+            <div class="collapsible-header" id="toggleCommentsActivity">
+              <span>💬 Komentar &amp; Aktivitas (<span id="commentsCountPreview">0</span>)</span>
+              <span class="collapsible-toggle-icon">▼</span>
+            </div>
+            <div class="collapsible-body" id="commentsActivityContainer">
+              <div class="comments-list" id="cardCommentsList"></div>
+              <div class="checklist-add-row" id="commentInputRow" style="margin-top: 8px;">
+                <input type="text" id="newCommentInput" class="form-input" placeholder="Tulis komentar atau update progres...">
+                <button type="button" id="addCommentBtn" class="btn btn-secondary">Kirim</button>
+              </div>
+              <div class="activity-log-section" id="cardActivityLogSection" style="margin-top: 12px; display: none;">
+                <div style="font-size: 0.74rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">🕒 Riwayat Aktivitas</div>
+                <div class="activity-log-list" id="cardActivityList"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="modal-footer">

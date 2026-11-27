@@ -5530,3 +5530,81 @@ body.role-viewer #myBoardView .card-action-btn[data-action="delete"] {
   background: #b45309 !important;
   color: #ffffff !important;
 }
+
+/* Comments & Activity Log in Card Modal + Footer Badge */
+.comments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.comment-item {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+
+.comment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  color: var(--text-primary);
+}
+
+.comment-time, .activity-time {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.comment-del-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0 4px;
+}
+
+.comment-del-btn:hover {
+  color: #ef4444;
+}
+
+.comment-body {
+  color: var(--text-secondary);
+  line-height: 1.35;
+  white-space: pre-wrap;
+}
+
+.activity-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 2px 0;
+  border-bottom: 1px dashed var(--border-subtle);
+}
+
+.card-comment-badge {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--bg-surface-elevated);
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+}
