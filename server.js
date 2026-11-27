@@ -622,6 +622,73 @@ function createServerApp(options = {}) {
       }
     }
 
+    // Conflict-free per-card upsert & delete (prevents concurrent users from overwriting other cards)
+    if (pathname.startsWith('/api/cards/')) {
+      const targetCardId = decodeURIComponent(pathname.substring('/api/cards/'.length));
+      if (!targetCardId) {
+        sendJson(res, 400, { error: 'ID kartu diperlukan.' });
+        return;
+      }
+
+      if (req.method === 'PUT') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.WRITE_CARDS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda (Viewer) tidak memiliki izin mengubah kartu.' });
+          return;
+        }
+        try {
+          const cardPayload = await parseBody(req);
+          if (!cardPayload || typeof cardPayload !== 'object' || Array.isArray(cardPayload)) {
+            sendJson(res, 400, { error: 'Payload kartu tidak valid.' });
+            return;
+          }
+          cardPayload.id = targetCardId;
+          const cards = readJsonFile(dataFile, []);
+          const idx = cards.findIndex(c => String(c.id) === String(targetCardId));
+          if (idx !== -1) {
+            if (!cardPayload.createdAt && cards[idx].createdAt) {
+              cardPayload.createdAt = cards[idx].createdAt;
+            }
+            cards[idx] = cardPayload;
+          } else {
+            cards.unshift(cardPayload);
+          }
+          writeJsonFile(dataFile, cards);
+          broadcastEvent('cards_updated', {
+            count: cards.length,
+            cardId: targetCardId,
+            by: authUser ? authUser.username : 'local'
+          });
+          sendJson(res, 200, { success: true, card: cardPayload });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+
+      if (req.method === 'DELETE') {
+        if (authManager.isAuthEnabled() && !authManager.can(authUser, PERMISSIONS.WRITE_CARDS)) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda (Viewer) tidak memiliki izin menghapus kartu.' });
+          return;
+        }
+        try {
+          const cards = readJsonFile(dataFile, []);
+          const nextCards = cards.filter(c => String(c.id) !== String(targetCardId));
+          writeJsonFile(dataFile, nextCards);
+          broadcastEvent('cards_updated', {
+            count: nextCards.length,
+            cardId: targetCardId,
+            by: authUser ? authUser.username : 'local'
+          });
+          sendJson(res, 200, { success: true, count: nextCards.length });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
     if (pathname === '/api/schema') {
       if (req.method === 'GET') {
         const schema = readJsonFile(schemaFile, { fields: [], tagPalette: {} });

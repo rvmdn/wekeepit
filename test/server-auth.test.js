@@ -241,6 +241,42 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       }, { username: 'illegal_user', password: 'password123' });
       assert.strictEqual(editorCreateUser.statusCode, 403);
 
+      // 12b. Conflict-free per-card PUT /api/cards/:id & DELETE /api/cards/:id
+      const putCardA = await makeRequest(app.server, {
+        path: '/api/cards/card-a',
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
+      }, { id: 'card-a', title: 'Card A by Admin' });
+      assert.strictEqual(putCardA.statusCode, 200);
+
+      const putCardB = await makeRequest(app.server, {
+        path: '/api/cards/card-b',
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${editorToken}` }
+      }, { id: 'card-b', title: 'Card B by Editor' });
+      assert.strictEqual(putCardB.statusCode, 200);
+
+      const viewerPutCard = await makeRequest(app.server, {
+        path: '/api/cards/card-c',
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${viewerToken}` }
+      }, { id: 'card-c', title: 'Blocked' });
+      assert.strictEqual(viewerPutCard.statusCode, 403);
+
+      const cardsAfterPerCard = await makeRequest(app.server, {
+        path: '/api/cards',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
+      });
+      assert.ok(cardsAfterPerCard.json.some(c => c.id === 'card-a'));
+      assert.ok(cardsAfterPerCard.json.some(c => c.id === 'card-b'));
+
+      const delCardB = await makeRequest(app.server, {
+        path: '/api/cards/card-b',
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${editorToken}` }
+      });
+      assert.strictEqual(delCardB.statusCode, 200);
+
       // 13. Logout
       const logoutRes = await makeRequest(app.server, {
         path: '/api/auth/logout',

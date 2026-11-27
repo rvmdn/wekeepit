@@ -1241,6 +1241,67 @@
     }
   }
 
+  async function saveSingleCard(cardPayload) {
+    if (!cardPayload || !cardPayload.id) return saveCards();
+    localStorage.setItem('wekeepit_cards_backup', JSON.stringify(cards));
+    reminderService.setCards(cards);
+
+    if (window.chrome && window.chrome.webview) {
+      try {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'SAVE_CARDS', data: cards }));
+      } catch (_) {}
+    }
+
+    if (isServerAvailable) {
+      try {
+        const res = await fetch(apiUrl('/api/cards/' + encodeURIComponent(cardPayload.id)), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cardPayload)
+        });
+        if (res.status === 401 && authEnabled) {
+          showAuthModal();
+          return;
+        }
+        if (res.status === 403) {
+          alert('Aksi ditolak: Peran akun Anda (Viewer) tidak memiliki izin mengubah data kartu.');
+          return;
+        }
+        if (res.ok) return;
+      } catch (_) {}
+      await saveCards();
+    }
+  }
+
+  async function deleteSingleCardFromServer(cardId) {
+    localStorage.setItem('wekeepit_cards_backup', JSON.stringify(cards));
+    reminderService.setCards(cards);
+
+    if (window.chrome && window.chrome.webview) {
+      try {
+        window.chrome.webview.postMessage(JSON.stringify({ type: 'SAVE_CARDS', data: cards }));
+      } catch (_) {}
+    }
+
+    if (isServerAvailable) {
+      try {
+        const res = await fetch(apiUrl('/api/cards/' + encodeURIComponent(cardId)), {
+          method: 'DELETE'
+        });
+        if (res.status === 401 && authEnabled) {
+          showAuthModal();
+          return;
+        }
+        if (res.status === 403) {
+          alert('Aksi ditolak: Peran akun Anda (Viewer) tidak memiliki izin menghapus data kartu.');
+          return;
+        }
+        if (res.ok) return;
+      } catch (_) {}
+      await saveCards();
+    }
+  }
+
   async function loadSchema() {
     if (isServerAvailable) {
       try {
@@ -3099,7 +3160,7 @@
         if (targetCard && targetCard.status !== col.id) {
           targetCard.status = col.id;
           targetCard.updatedAt = new Date().toISOString();
-          await saveCards();
+          await saveSingleCard(targetCard);
           renderKanbanView();
           updateTabCounts();
           alertToast(`Tugas "${targetCard.title || 'Tugas'}" dipindah ke ${col.label}`);
@@ -3901,7 +3962,7 @@
         saveMyCards();
         renderMyBoard();
       } else {
-        saveCards();
+        saveSingleCard(card);
         renderAll();
       }
     });
@@ -4012,8 +4073,13 @@
       chk.addEventListener('change', () => {
         item.done = chk.checked;
         card.updatedAt = new Date().toISOString();
-        saveCards();
-        renderAll();
+        if (myCards.some(c => c.id === card.id)) {
+          saveMyCards();
+          renderMyBoard();
+        } else {
+          saveSingleCard(card);
+          renderAll();
+        }
       });
 
       const span = document.createElement('span');
@@ -4236,7 +4302,7 @@
     if (!card) return;
     card.archived = true;
     card.archivedAt = new Date().toISOString();
-    saveCards();
+    saveSingleCard(card);
     renderAll();
     alertToast(`Catatan "${card.title || 'Tanpa Judul'}" dipindahkan ke Arsip & Sampah 📦`);
   }
@@ -4247,7 +4313,7 @@
     delete card.archived;
     delete card.archivedAt;
     card.updatedAt = new Date().toISOString();
-    saveCards();
+    saveSingleCard(card);
     renderAll();
     renderArchiveModal();
     alertToast(`Catatan "${card.title || 'Tanpa Judul'}" berhasil dipulihkan! 🔄`);
@@ -4258,7 +4324,7 @@
     const title = card ? card.title : 'catatan ini';
     if (!confirm(`Hapus PERMANEN "${title}"? Data tidak dapat dipulihkan lagi.`)) return;
     cards = cards.filter(c => c.id !== id);
-    saveCards();
+    deleteSingleCardFromServer(id);
     renderAll();
     renderArchiveModal();
     alertToast(`Catatan telah dihapus secara permanen. 🗑️`);
@@ -4743,7 +4809,7 @@
       }
     }
 
-    await saveCards();
+    await saveSingleCard(cardPayload);
     closeCardModal();
     renderAll();
   }
