@@ -5304,3 +5304,5 @@ body.role-viewer .kanban-card {
   border-color: #6366f1;
   color: #a5b4fc;
 }
+
+body.role-viewer #uploadVaultDocBtn { display: none !important; }

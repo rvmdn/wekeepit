@@ -1637,6 +1637,69 @@
 
     // V2 Folder management & Indexer actions
     if (addFolderBtn) addFolderBtn.addEventListener('click', openFolderModal);
+
+    // Vault Document Upload (Client -> Server Storage)
+    const uploadVaultDocBtn = document.getElementById('uploadVaultDocBtn');
+    const vaultUploadInput = document.getElementById('vaultUploadInput');
+    if (uploadVaultDocBtn && vaultUploadInput) {
+      uploadVaultDocBtn.addEventListener('click', () => {
+        vaultUploadInput.value = '';
+        vaultUploadInput.click();
+      });
+      vaultUploadInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        uploadVaultDocBtn.disabled = true;
+        const origHtml = uploadVaultDocBtn.innerHTML;
+        uploadVaultDocBtn.innerHTML = '<span>⏳</span> Mengunggah...';
+
+        let successCount = 0;
+        let lastError = '';
+        for (const file of files) {
+          try {
+            const base64 = await new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const res = String(reader.result || '');
+                const idx = res.indexOf(',');
+                resolve(idx !== -1 ? res.slice(idx + 1) : res);
+              };
+              reader.onerror = () => reject(new Error('Gagal membaca berkas lokal'));
+              reader.readAsDataURL(file);
+            });
+
+            const res = await fetch(apiUrl('/api/vault/upload'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json; charset=utf-8' },
+              body: JSON.stringify({
+                fileName: file.name,
+                contentBase64: base64
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              successCount++;
+            } else {
+              lastError = data.error || `Gagal mengunggah ${file.name}`;
+            }
+          } catch (err) {
+            lastError = err.message;
+          }
+        }
+
+        uploadVaultDocBtn.disabled = false;
+        uploadVaultDocBtn.innerHTML = origHtml;
+
+        if (successCount > 0) {
+          alertToast(`✅ ${successCount} dokumen diunggah ke server dan sedang diindeks.`);
+          await loadFoldersAndDocuments();
+        }
+        if (lastError) {
+          alert(lastError);
+        }
+      });
+    }
     if (closeFolderModal) closeFolderModal.addEventListener('click', closeFolderModalFn);
     if (cancelFolderModal) cancelFolderModal.addEventListener('click', closeFolderModalFn);
     if (folderModal) {
@@ -4651,6 +4714,7 @@
         <td>
           <div class="table-actions">
             <button class="btn-table-action btn-view-doc" title="Lihat Teks Pratinjau">👁️</button>
+            <button class="btn-table-action btn-download-doc" title="Unduh Dokumen ke Perangkat Anda">⬇️</button>
             <button class="btn-table-action btn-open-native" title="Buka di Windows Explorer">📁</button>
           </div>
         </td>
@@ -4658,6 +4722,10 @@
 
       tr.querySelector('.btn-view-doc').addEventListener('click', () => {
         openDocumentViewerModal(doc);
+      });
+
+      tr.querySelector('.btn-download-doc').addEventListener('click', () => {
+        window.open(apiUrl('/api/vault/download?id=' + encodeURIComponent(doc.id)), '_blank');
       });
 
       tr.querySelector('.btn-open-native').addEventListener('click', async () => {

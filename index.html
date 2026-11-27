@@ -307,7 +307,11 @@
             <p class="library-subtitle">Pilih folder lokal yang berisi berkas <strong>.md, .pdf, .docx, .xlsx</strong> untuk diindeks secara otomatis.</p>
           </div>
           <div class="library-header-actions">
-            <button id="addFolderBtn" class="btn btn-primary">
+            <button id="uploadVaultDocBtn" class="btn btn-primary" title="Unggah dokumen (.md, .pdf, .docx, .xlsx) ke penyimpanan server (default D:\WeKeepIt-Vault)">
+              <span>📤</span> Unggah Dokumen
+            </button>
+            <input type="file" id="vaultUploadInput" accept=".md,.pdf,.docx,.xlsx" multiple style="display: none;">
+            <button id="addFolderBtn" class="btn btn-secondary">
               <span>➕</span> Tambah Folder
             </button>
             <button id="reindexAllBtn" class="btn btn-secondary">

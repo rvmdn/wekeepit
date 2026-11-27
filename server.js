@@ -173,16 +173,19 @@ function sendJson(res, statusCode, data) {
 }
 
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB limit (SEC-04)
+const MAX_VAULT_UPLOAD_BODY_SIZE = 25 * 1024 * 1024; // 25MB base64 JSON (~18MB raw file)
+const MAX_VAULT_FILE_SIZE = 18 * 1024 * 1024; // 18MB raw file limit
 
-function parseBody(req) {
+function parseBody(req, maxBytes = MAX_BODY_SIZE) {
   return new Promise((resolve, reject) => {
     let body = '';
     let size = 0;
     req.on('data', chunk => {
       size += chunk.length;
-      if (size > MAX_BODY_SIZE) {
+      if (size > maxBytes) {
         req.destroy();
-        const err = new Error('Ukuran payload melebihi batas maksimum (10MB)');
+        const mb = Math.round(maxBytes / (1024 * 1024));
+        const err = new Error(`Ukuran payload melebihi batas maksimum (${mb}MB)`);
         err.statusCode = 413;
         reject(err);
         return;
@@ -229,6 +232,9 @@ function createServerApp(options = {}) {
   const schemaFile = options.schemaFile || process.env.SCHEMA_FILE_PATH || SCHEMA_FILE;
   const launcher = options.launchTarget || launchTarget;
   const baseDir = options.baseDir || __dirname;
+  const defaultVaultDir = options.vaultDir
+    || process.env.VAULT_STORAGE_DIR
+    || (process.platform === 'win32' && fs.existsSync('D:\\') ? 'D:\\WeKeepIt-Vault' : path.join(baseDir, 'vault-storage'));
 
   function initWatchers() {
     try {
@@ -702,6 +708,157 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
         const docs = folderId ? db.getDocumentsByFolder(folderId) : db.getAllDocuments();
         sendJson(res, 200, docs);
         return;
+      }
+    }
+
+    // Vault Document Upload (stores file on server storage, auto-registers D:\WeKeepIt-Vault, & indexes)
+    if (pathname === '/api/vault/upload') {
+      if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.WRITE_CARDS))) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda (Viewer) tidak memiliki izin mengunggah dokumen.' });
+          return;
+        }
+        try {
+          const payload = await parseBody(req, MAX_VAULT_UPLOAD_BODY_SIZE);
+          const rawName = typeof payload.fileName === 'string' ? payload.fileName : '';
+          const baseName = path.basename(rawName).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
+          if (!baseName) {
+            sendJson(res, 400, { error: 'Nama berkas tidak valid.' });
+            return;
+          }
+          const ext = path.extname(baseName).toLowerCase();
+          if (!ALLOWED_DOC_EXTENSIONS.has(ext)) {
+            sendJson(res, 400, { error: `Tipe berkas '${ext || '(tanpa ekstensi)'}' tidak didukung. Gunakan: .md, .pdf, .docx, .xlsx` });
+            return;
+          }
+          if (typeof payload.contentBase64 !== 'string' || !payload.contentBase64) {
+            sendJson(res, 400, { error: 'Isi berkas (contentBase64) tidak boleh kosong.' });
+            return;
+          }
+          const fileBuffer = Buffer.from(payload.contentBase64, 'base64');
+          if (fileBuffer.length === 0) {
+            sendJson(res, 400, { error: 'Berkas kosong atau format base64 tidak valid.' });
+            return;
+          }
+          if (fileBuffer.length > MAX_VAULT_FILE_SIZE) {
+            sendJson(res, 413, { error: 'Ukuran berkas melebihi batas maksimum (18MB).' });
+            return;
+          }
+
+          // Resolve target folder (explicit folderId or defaultVaultDir on D:\WeKeepIt-Vault)
+          let targetFolder = null;
+          if (payload.folderId) {
+            targetFolder = db.getFolderById(String(payload.folderId));
+            if (!targetFolder || !targetFolder.path) {
+              sendJson(res, 404, { error: 'Folder tujuan tidak ditemukan.' });
+              return;
+            }
+          } else {
+            if (!fs.existsSync(defaultVaultDir)) {
+              fs.mkdirSync(defaultVaultDir, { recursive: true });
+            }
+            const resolvedVault = path.resolve(defaultVaultDir);
+            const existing = folderManager.listFolders().find(f => {
+              try {
+                return path.resolve(f.path).toLowerCase() === resolvedVault.toLowerCase();
+              } catch {
+                return false;
+              }
+            });
+            targetFolder = existing || await folderManager.addFolder(resolvedVault, { name: 'WeKeepIt Vault (Server)' });
+          }
+
+          const resolvedFolder = fs.realpathSync(targetFolder.path);
+          let finalName = baseName;
+          let destPath = path.resolve(resolvedFolder, finalName);
+
+          // Avoid silent overwrite on filename collision
+          if (fs.existsSync(destPath)) {
+            const stem = path.basename(baseName, ext);
+            finalName = `${stem}-${Date.now()}${ext}`;
+            destPath = path.resolve(resolvedFolder, finalName);
+          }
+
+          // Strict path boundary check
+          const folderPrefix = resolvedFolder.endsWith(path.sep) ? resolvedFolder : resolvedFolder + path.sep;
+          if (!destPath.startsWith(folderPrefix)) {
+            sendJson(res, 403, { error: '403 Forbidden: Lokasi tujuan tidak valid.' });
+            return;
+          }
+
+          const tmpDest = destPath + '.tmp';
+          fs.writeFileSync(tmpDest, fileBuffer);
+          fs.renameSync(tmpDest, destPath);
+
+          // Trigger indexing for this folder so the file is immediately searchable
+          await documentIndexer.reindexFolder(targetFolder.id);
+
+          sendJson(res, 201, {
+            success: true,
+            fileName: finalName,
+            size: fileBuffer.length,
+            path: destPath,
+            folderId: targetFolder.id,
+            folderPath: targetFolder.path
+          });
+          return;
+        } catch (err) {
+          sendJson(res, err.statusCode || 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    // Vault Document Download (remote-safe download by indexed document id)
+    if (pathname === '/api/vault/download') {
+      if (req.method === 'GET') {
+        const docId = reqUrl.searchParams.get('id');
+        if (!docId) {
+          sendJson(res, 400, { error: 'Parameter id dokumen diperlukan.' });
+          return;
+        }
+        const doc = db.getAllDocuments().find(d => String(d.id) === String(docId));
+        if (!doc || !doc.path || !fs.existsSync(doc.path)) {
+          sendJson(res, 404, { error: 'Dokumen tidak ditemukan pada penyimpanan server.' });
+          return;
+        }
+        try {
+          const canonicalTarget = fs.realpathSync(doc.path);
+          const ext = path.extname(canonicalTarget).toLowerCase();
+          if (!ALLOWED_DOC_EXTENSIONS.has(ext)) {
+            sendJson(res, 403, { error: 'Tipe berkas tidak diizinkan untuk diunduh.' });
+            return;
+          }
+          // Verify file sits inside a registered folder
+          const registeredFolders = folderManager.listFolders();
+          const inRegistered = registeredFolders.some(f => {
+            try {
+              if (!f.path || !fs.existsSync(f.path)) return false;
+              const cf = fs.realpathSync(f.path);
+              const prefix = cf.endsWith(path.sep) ? cf : cf + path.sep;
+              return canonicalTarget.toLowerCase().startsWith(prefix.toLowerCase());
+            } catch {
+              return false;
+            }
+          });
+          if (!inRegistered) {
+            sendJson(res, 403, { error: '403 Forbidden: Berkas berada di luar folder terdaftar.' });
+            return;
+          }
+
+          const downloadName = path.basename(canonicalTarget).replace(/["\r\n]/g, '_');
+          const content = fs.readFileSync(canonicalTarget);
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${downloadName}"`,
+            'Content-Length': content.length
+          });
+          res.end(content);
+          return;
+        } catch (err) {
+          sendJson(res, 500, { error: 'Gagal membaca berkas: ' + err.message });
+          return;
+        }
       }
     }
 
