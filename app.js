@@ -1610,6 +1610,12 @@
     }
 
     document.getElementById('downloadJsonBtn').addEventListener('click', exportDataJson);
+    const exportMdBtn = document.getElementById('exportMarkdownBtn');
+    const exportExcelBtn = document.getElementById('exportExcelBtn');
+    const exportWordBtn = document.getElementById('exportWordBtn');
+    if (exportMdBtn) exportMdBtn.addEventListener('click', exportDataMarkdown);
+    if (exportExcelBtn) exportExcelBtn.addEventListener('click', exportDataExcelCsv);
+    if (exportWordBtn) exportWordBtn.addEventListener('click', exportDataWordDoc);
     document.getElementById('triggerImportBtn').addEventListener('click', () => {
       document.getElementById('importFileInput').click();
     });
@@ -4609,6 +4615,168 @@
     document.body.appendChild(dlAnchor);
     dlAnchor.click();
     dlAnchor.remove();
+  }
+
+  function downloadBlobFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function formatAssigneesText(card) {
+    if (!Array.isArray(card.assignees) || card.assignees.length === 0) return '-';
+    return card.assignees.map(uname => {
+      const u = teamRoster.find(x => x.username === uname);
+      return u ? (u.displayName || u.username) : uname;
+    }).join(', ');
+  }
+
+  function formatChecklistSummary(card) {
+    if (!Array.isArray(card.checklist) || card.checklist.length === 0) return '-';
+    const done = card.checklist.filter(c => c.done).length;
+    return `${done}/${card.checklist.length}`;
+  }
+
+  function exportDataMarkdown() {
+    const active = cards.filter(c => !c.archived);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const lines = [
+      `# Laporan WeKeepIt (${dateStr})`,
+      '',
+      `Total item aktif: **${active.length}**`,
+      ''
+    ];
+
+    const renderGroup = (title, list) => {
+      lines.push(`## ${title} (${list.length})`, '');
+      if (list.length === 0) {
+        lines.push('_Tidak ada item._', '');
+        return;
+      }
+      list.forEach((c, idx) => {
+        const pInfo = getCardPriority(c);
+        const col = isKanbanTask(c) ? KANBAN_COLUMNS.find(k => k.id === c.status) : null;
+        lines.push(`### ${idx + 1}. ${c.title || 'Tanpa Judul'}`);
+        const meta = [];
+        if (col) meta.push(`**Status:** ${col.label}`);
+        if (pInfo) meta.push(`**Prioritas:** ${pInfo.shortLabel}`);
+        if (c.startDate || c.dueDate) meta.push(`**Waktu:** ${c.startDate || '-'} s.d. ${c.dueDate || '-'}`);
+        if (Array.isArray(c.assignees) && c.assignees.length) meta.push(`**Penanggung Jawab:** ${formatAssigneesText(c)}`);
+        if (Array.isArray(c.tags) && c.tags.length) meta.push(`**Tags:** ${c.tags.map(t => `#${t}`).join(' ')}`);
+        if (meta.length) lines.push(meta.join(' | '), '');
+        if (c.content) lines.push(c.content, '');
+        if (Array.isArray(c.checklist) && c.checklist.length) {
+          lines.push('**Checklist:**');
+          c.checklist.forEach(item => {
+            lines.push(`- [${item.done ? 'x' : ' '}] ${item.text}`);
+          });
+          lines.push('');
+        }
+        lines.push('---', '');
+      });
+    };
+
+    renderGroup('Tugas Kanban', active.filter(c => isKanbanTask(c)));
+    renderGroup('Catatan Notice Board', active.filter(c => !isKanbanTask(c)));
+
+    downloadBlobFile(`wekeepit-laporan-${dateStr}.md`, lines.join('\n'), 'text/markdown;charset=utf-8');
+    alertToast('📝 Laporan Markdown (.md) berhasil diunduh.');
+  }
+
+  function csvCell(value) {
+    let str = String(value ?? '');
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = "'" + str; // Prevent CSV formula injection in Excel
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+
+  function exportDataExcelCsv() {
+    const active = cards.filter(c => !c.archived);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const headers = ['Tipe', 'Judul', 'Status', 'Prioritas', 'Tanggal Mulai', 'Tenggat', 'Penanggung Jawab', 'Tags', 'Checklist', 'Isi Catatan', 'Diperbarui'];
+    const rows = [headers.map(csvCell).join(',')];
+
+    active.forEach(c => {
+      const isTask = isKanbanTask(c);
+      const col = isTask ? KANBAN_COLUMNS.find(k => k.id === c.status) : null;
+      const pInfo = getCardPriority(c);
+      rows.push([
+        isTask ? 'Tugas Kanban' : 'Catatan',
+        c.title || 'Tanpa Judul',
+        col ? col.label : '-',
+        pInfo ? pInfo.shortLabel : '-',
+        c.startDate || '-',
+        c.dueDate || '-',
+        formatAssigneesText(c),
+        Array.isArray(c.tags) && c.tags.length ? c.tags.map(t => `#${t}`).join(' ') : '-',
+        formatChecklistSummary(c),
+        c.content || '',
+        c.updatedAt ? c.updatedAt.slice(0, 10) : '-'
+      ].map(csvCell).join(','));
+    });
+
+    // UTF-8 BOM so Microsoft Excel detects UTF-8 automatically
+    downloadBlobFile(`wekeepit-laporan-${dateStr}.csv`, '\uFEFF' + rows.join('\r\n'), 'text/csv;charset=utf-8');
+    alertToast('📗 Laporan Excel (.csv) berhasil diunduh.');
+  }
+
+  function exportDataWordDoc() {
+    const active = cards.filter(c => !c.archived);
+    const dateStr = new Date().toISOString().slice(0, 10);
+
+    const rowsHtml = active.map((c, i) => {
+      const isTask = isKanbanTask(c);
+      const col = isTask ? KANBAN_COLUMNS.find(k => k.id === c.status) : null;
+      const pInfo = getCardPriority(c);
+      const checklistHtml = Array.isArray(c.checklist) && c.checklist.length
+        ? `<ul style="margin:4px 0;padding-left:18px;">${c.checklist.map(it => `<li>${it.done ? '☑' : '☐'} ${escapeHtml(it.text)}</li>`).join('')}</ul>`
+        : '';
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${isTask ? 'Tugas Kanban' : 'Catatan'}</td>
+          <td><strong>${escapeHtml(c.title || 'Tanpa Judul')}</strong>${c.content ? `<br><span style="color:#444;">${escapeHtml(c.content).replace(/\n/g, '<br>')}</span>` : ''}${checklistHtml}</td>
+          <td>${escapeHtml(col ? col.label : '-')}</td>
+          <td>${escapeHtml(pInfo ? pInfo.shortLabel : '-')}</td>
+          <td>${escapeHtml(formatAssigneesText(c))}</td>
+          <td>${escapeHtml(c.dueDate || c.startDate || '-')}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const htmlDoc = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+      <head><meta charset="utf-8"><title>Laporan WeKeepIt ${dateStr}</title>
+      <style>
+        body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111; }
+        h1 { color: #1e293b; border-bottom: 2px solid #4f46e5; padding-bottom: 6px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; text-align: left; font-size: 10pt; }
+        th { background: #f1f5f9; font-weight: bold; }
+      </style></head>
+      <body>
+        <h1>Laporan Workspace WeKeepIt (${dateStr})</h1>
+        <p>Total item aktif: <strong>${active.length}</strong></p>
+        <table>
+          <thead>
+            <tr>
+              <th>No</th><th>Tipe</th><th>Judul &amp; Detail</th><th>Status</th><th>Prioritas</th><th>Penanggung Jawab</th><th>Tenggat</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml || '<tr><td colspan="7">Tidak ada data aktif.</td></tr>'}</tbody>
+        </table>
+      </body></html>
+    `;
+
+    downloadBlobFile(`wekeepit-laporan-${dateStr}.doc`, '\uFEFF' + htmlDoc, 'application/msword;charset=utf-8');
+    alertToast('📘 Laporan Word (.doc) berhasil diunduh.');
   }
 
   function importDataJson(e) {
