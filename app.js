@@ -1568,6 +1568,81 @@
     // Modals open/close
     document.getElementById('newCardBtn').addEventListener('click', () => openCardModal());
     document.getElementById('emptyActionBtn').addEventListener('click', () => openCardModal());
+
+    // Global Ctrl+V Smart Pre-fill (opens Card Modal pre-populated from clipboard)
+    document.addEventListener('paste', async (e) => {
+      if (document.body.classList.contains('role-viewer')) return;
+      if (authEnabled && !currentUser) return;
+      if (isUserInteractingWithBoard()) return;
+      const target = e.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) {
+        return;
+      }
+      const cd = e.clipboardData;
+      if (!cd) return;
+
+      const files = Array.from(cd.files || []);
+      const text = (cd.getData('text/plain') || '').trim();
+      if (files.length === 0 && !text) return;
+
+      e.preventDefault();
+
+      // 1. Pasted files (e.g. .md/.pdf/.docx/.xlsx)
+      if (files.length > 0 && typeof docEngine !== 'undefined' && typeof docEngine.processFile === 'function') {
+        openCardModal(null);
+        if (cardTypeSelect) {
+          cardTypeSelect.value = 'document';
+          updateCardTypeView('document');
+        }
+        formTitle.value = files[0].name.replace(/\.[^.]+$/, '') || 'Lampiran Dokumen';
+        for (const f of files) {
+          try {
+            const parsed = await docEngine.processFile(f);
+            if (parsed) editingAttachments.push(parsed);
+          } catch (_) {}
+        }
+        renderAttachmentsEditor();
+        alertToast('📋 Berkas clipboard disiapkan — periksa lalu klik Simpan.');
+        return;
+      }
+
+      // 2. Pasted URL or Text
+      const urlOnlyMatch = /^https?:\/\/\S+$/i.test(text);
+      const embeddedUrlMatch = text.match(/https?:\/\/[^\s]+/i);
+
+      openCardModal(null);
+
+      if (urlOnlyMatch) {
+        let hostTitle = 'Tautan Referensi';
+        try { hostTitle = `Referensi: ${new URL(text).hostname}`; } catch (_) {}
+        formTitle.value = hostTitle;
+        if (cardTypeSelect) {
+          cardTypeSelect.value = 'link';
+          updateCardTypeView('link');
+        }
+        const urlInput = metadataFieldsContainer.querySelector('[name="meta_url"]');
+        if (urlInput) urlInput.value = text;
+        alertToast('🔗 Link terdeteksi dari clipboard — periksa lalu klik Simpan.');
+      } else {
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const firstLine = (lines[0] || 'Catatan Baru').slice(0, 72);
+        formTitle.value = firstLine;
+        formContent.value = text;
+
+        const targetType = embeddedUrlMatch ? 'all' : 'note';
+        if (cardTypeSelect) {
+          cardTypeSelect.value = targetType;
+          updateCardTypeView(targetType);
+        }
+        if (embeddedUrlMatch) {
+          const urlInput = metadataFieldsContainer.querySelector('[name="meta_url"]');
+          if (urlInput) urlInput.value = embeddedUrlMatch[0];
+        }
+        formContent.style.height = 'auto';
+        formContent.style.height = Math.max(64, Math.min(160, formContent.scrollHeight)) + 'px';
+        alertToast('📋 Teks clipboard disiapkan — periksa lalu klik Simpan.');
+      }
+    });
     document.getElementById('closeCardModal').addEventListener('click', closeCardModal);
     document.getElementById('cancelCardModal').addEventListener('click', closeCardModal);
     cardModal.addEventListener('click', (e) => {

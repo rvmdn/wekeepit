@@ -5,6 +5,33 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 
 ---
 
+## [2.6.0] - 2026-11-27
+
+### Ditambahkan (Added)
+- **Real-Time Multi-User Sync (SSE `/api/events`)**: Perubahan kartu (`POST /api/cards`), skema metadata (`POST /api/schema`), dan unggahan dokumen Vault (`POST /api/vault/upload`) disiarkan secara instan ke seluruh browser yang terhubung tanpa perlu refresh (`F5`), lengkap dengan penundaan aman saat pengguna sedang membuka modal atau drag kartu.
+- **Online Presence Avatars (Gaya Google Docs / Sheets)**: Menampilkan deretan avatar lingkaran pengguna yang sedang aktif di header lengkap dengan titik status online, nama, role, halaman yang sedang dibuka, serta indikator kartu yang sedang diedit (`POST /api/presence`).
+- **Upload & Download Document Vault Server (`D:\WeKeepIt-Vault`)**: Admin & Editor dapat mengunggah berkas `.md`, `.pdf`, `.docx`, `.xlsx` (maks. 18 MB) langsung dari browser ke penyimpanan server (default `D:\WeKeepIt-Vault` di Windows) dengan auto-indexing instan, serta tombol **Unduh (`⬇️`)** untuk semua peran.
+- **Generate Laporan Dokumen (Markdown `.md`, Excel `.csv`, Word `.doc`)**: Opsi ekspor laporan di modal *Cadangkan Data* mencakup Tugas Kanban, Catatan Notice Board, status, prioritas, tenggat, penanggung jawab, tags, dan progres checklist (termasuk proteksi *CSV formula injection* untuk Excel).
+- **Dukungan Native HTTPS Opsional**: `server.js` mendukung sertifikat `.pfx` (`SSL_PFX_PATH`) maupun `.key`/`.crt` (`SSL_KEY_PATH` / `SSL_CERT_PATH`), menyetel cookie `; Secure` otomatis saat TLS aktif, serta ditambah skrip `launch-team-server.bat` dengan deteksi sertifikat otomatis.
+- **Tombol `🔑 Password` di Manajemen Pengguna**: Admin dapat mengganti password akunnya sendiri (`admin`) maupun mereset password anggota tim langsung dari UI.
+- **Global `Ctrl+V` Smart Pre-fill**: Menekan `Ctrl+V` di board otomatis membuka modal Catatan Baru dengan pengisian awal cerdas (URL, teks panjang, maupun berkas lampiran) agar pengguna bisa meninjau sebelum menyimpan.
+
+### Diperbaiki (Fixed)
+- **Atomic Write & Pemulihan `.bak`**: `writeJsonFile()` di `server.js` dan penyimpanan `users.json` di `auth.js` kini menulis ke `.tmp` lalu rename atomik dengan rotasi cadangan `.bak` dan auto-recovery saat pembacaan jika berkas utama korup.
+- **Binding `ALLOW_REMOTE_HOST=true` di `server.listen`**: Memperbaiki wrapper `server.listen` yang sebelumnya memaksa host `0.0.0.0` kembali ke `127.0.0.1`, serta mengizinkan *same-origin* LAN untuk `http://` dan `https://`.
+- **Perbaikan Kontras Tema**: Menyelaraskan warna `auth-user-pill` pada tema **Bulletin Board** dan mencegah transparansi `theme-acrylic` membuat latar tema gelap terlihat abu-abu pudar di browser web biasa.
+
+---
+
+## [2.5.0] - 2026-11-26
+
+### Ditambahkan (Added)
+- **Multi-Assignee Tugas Kanban**: Admin & Editor dapat menetapkan satu atau lebih penanggung jawab (`assignees[]`) pada tugas Kanban dari daftar tim (`/api/auth/users`), lengkap dengan chip inisial avatar di kartu Kanban, tabel, dan filter cepat **`👤 Tugas Saya`**.
+- **Single-Seed Admin & Pembuatan Akun via UI**: Inisialisasi awal pada mode server kini hanya membuat 1 akun `admin` (`admin123`), sedangkan akun `editor` dan `viewer` dibuat oleh Admin melalui modal Manajemen Pengguna (`👥`).
+- **Akses Roster Tim untuk Semua Pengguna Terautentikasi**: Endpoint `GET /api/auth/users` dapat dibaca seluruh pengguna yang login untuk kebutuhan picker penanggung jawab, sementara mutasi (`POST`/`PUT`/`DELETE`) tetap khusus Admin.
+
+---
+
 ## [2.4.0] - 2026-11-26
 
 ### Ditambahkan (Added)
