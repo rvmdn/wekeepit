@@ -87,9 +87,17 @@ Cukup klik ganda salah satu file skrip:
 
 ---
 
+## 📚 Dokumentasi Lanjutan
+
+- **[ARCHITECTURE.md](ARCHITECTURE.md)**: Peta arsitektur lengkap, daftar endpoint REST & SSE, tata letak penyimpanan (`wekeepit-data.json`, `my-boards/`, `D:\WeKeepIt-Vault`, `sessions.json`), topologi deployment Windows/LAN, serta *lessons learned*.
+- **[CHANGELOG.md](CHANGELOG.md)**: Riwayat rilis dan fitur per versi.
+- **[deploy/README-SERVER-DEPLOYMENT.md](deploy/README-SERVER-DEPLOYMENT.md)**: Panduan deployment server Linux/RHEL (Systemd, Nginx, SELinux, firewalld).
+
+---
+
 ## 🧪 Pengujian Otomatis (Automated Testing)
 
-WeKeepIt V2 dilengkapi dengan rangkaian tes unit, integrasi, regresi V1, dan benchmark performa menggunakan runner bawaan `node:test`:
+WeKeepIt V2 dilengkapi dengan **172** rangkaian tes unit, integrasi, regresi V1, keamanan, dan benchmark performa menggunakan runner bawaan `node:test`:
 
 ```bash
 npm test

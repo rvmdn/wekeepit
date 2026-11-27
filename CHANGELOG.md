@@ -5,6 +5,20 @@ Format ini mengacu pada [Keep a Changelog](https://keepachangelog.com/id/1.0.0/)
 
 ---
 
+## [2.7.0] - 2026-11-27
+
+### Ditambahkan (Added)
+- **Sinkronisasi Selektif Server → Lokal (`/api/sync/preview`, `/api/sync/pull`)**: Pengguna dapat menarik data dari server tim ke instalasi lokal melalui modal *Backup / Data* dengan daftar per kategori (*Berkas Dokumen Vault*, *Notice Board & Kanban*, *My Board*), lengkap dengan checkbox pilih-pilih, ukuran per item (`B`/`KB`/`MB`), ringkasan total ukuran terpilih, dukungan HTTPS *self-signed* LAN, serta pengunduhan otomatis `_images/` dan re-indexing Vault lokal.
+- **Pindah Catatan ke `🔒 My Board` (1-Klik)**: Tombol `🔒 Pindah ke My Board` pada modal edit kartu untuk memisahkan catatan pribadi dari Notice Board bersama ke papan pribadi pengguna secara instan.
+- **Private `🔒 My Board` & Storage Switcher**: Papan catatan pribadi per akun (`/api/my-cards` → `my-boards/<username>.json`) dengan opsi mode penyimpanan Server atau Lokal PC (`localStorage`) serta ekspor/impor JSON.
+- **Komentar Kartu, Riwayat Aktivitas & Lampiran Screenshot Disk**: Kolom komentar per kartu, log aktivitas otomatis, serta penyimpanan screenshot ke `<vaultDir>/_images/` dengan pratinjau lightbox zoom dan pembersihan otomatis gambar yatim (*orphan cleanup*, grace period 10 menit).
+- **Self-Service Profile & Inline Role Management**: Modal profil pengguna (`PUT /api/auth/profile`) untuk ubah nama/password sendiri serta dropdown ubah peran langsung di Manajemen Pengguna (`auth.updateUser()` dengan sinkronisasi sesi dan proteksi Admin terakhir).
+- **Conflict-Free Per-Card Sync (`PUT /api/cards/:id`, `DELETE /api/cards/:id`)**: Pembaruan dan penghapusan kartu tunggal tanpa menimpa perubahan kartu milik pengguna lain.
+- **Skrip Operasional Windows & Hardening Inti**: `backup-wekeepit.bat` (cadangan harian + retensi 14 hari), `setup-windows-tasks.ps1`, sesi persisten `sessions.json`, dan *rate limiter* login (blokir `429` setelah 5 percobaan gagal).
+- **Dokumentasi Arsitektur (`ARCHITECTURE.md`)**: Panduan menyeluruh arsitektur, peta berkas, endpoint API, tata letak penyimpanan, topologi deployment, dan *lessons learned*.
+
+---
+
 ## [2.6.0] - 2026-11-27
 
 ### Ditambahkan (Added)
