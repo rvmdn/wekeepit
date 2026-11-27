@@ -628,6 +628,18 @@
             <textarea id="formContent" class="form-textarea" rows="3" placeholder="Tulis catatan, teks, atau ringkasan di sini..."></textarea>
           </div>
 
+          <!-- Section: Gambar / Screenshot (Disimpan di disk server) -->
+          <div class="form-group" id="cardImagesGroup" style="margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <label class="form-label" style="margin: 0;">🖼️ Gambar / Screenshot (<span id="cardImagesCount">0</span>)</label>
+              <button type="button" id="addCardImageBtn" class="btn btn-secondary btn-sm" style="font-size: 0.74rem; padding: 3px 10px;">
+                📷 Pilih / Paste Gambar
+              </button>
+              <input type="file" id="cardImageInput" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display: none;">
+            </div>
+            <div id="cardImagesPreviewList" class="card-images-preview-list"></div>
+          </div>
+
           <!-- Color Palette -->
           <div class="form-group">
             <label class="form-label">Warna Aksen</label>
@@ -1108,6 +1120,15 @@
           <button type="submit" id="btnSaveProfile" class="btn btn-primary">Simpan Profil</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- MODAL: IMAGE LIGHTBOX PREVIEW -->
+  <div id="imageLightboxModal" class="modal-overlay" style="display: none; z-index: 10050;">
+    <div style="position: relative; max-width: 92vw; max-height: 92vh; display: flex; flex-direction: column; align-items: center; gap: 10px;">
+      <button type="button" id="closeImageLightbox" class="modal-close" style="position: absolute; top: -14px; right: -14px; z-index: 2;">✕</button>
+      <img id="imageLightboxImg" src="" alt="Preview" style="max-width: 90vw; max-height: 84vh; border-radius: 10px; box-shadow: 0 20px 50px rgba(0,0,0,0.7); background: #0f172a;">
+      <div id="imageLightboxCaption" style="color: #e2e8f0; font-size: 0.82rem;"></div>
     </div>
   </div>
 

@@ -60,6 +60,7 @@ const BLOCKED_EXTENSIONS = new Set([
 ]);
 
 const ALLOWED_DOC_EXTENSIONS = new Set(['.md', '.pdf', '.docx', '.xlsx']);
+const ALLOWED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
 
 const ALLOWED_LOOPBACK_ORIGIN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 const ALLOWED_EXACT_ORIGINS = new Set([
@@ -94,6 +95,9 @@ const MIME_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon'
 };
@@ -235,6 +239,7 @@ function createServerApp(options = {}) {
   const defaultVaultDir = options.vaultDir
     || process.env.VAULT_STORAGE_DIR
     || (process.platform === 'win32' && fs.existsSync('D:\\') ? 'D:\\WeKeepIt-Vault' : path.join(baseDir, 'vault-storage'));
+  const vaultImagesDir = path.join(defaultVaultDir, '_images');
   const myBoardsDir = options.myBoardsDir
     || process.env.MY_BOARDS_DIR
     || path.join(path.dirname(path.resolve(dataFile)), 'my-boards');
@@ -1138,7 +1143,7 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
           const folders = [];
           const files = [];
           for (const ent of entries) {
-            if (ent.name.startsWith('.')) continue;
+            if (ent.name.startsWith('.') || ent.name === '_images') continue;
             const full = path.resolve(currentDir, ent.name);
             if (ent.isDirectory()) {
               folders.push({
@@ -1282,6 +1287,78 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
           sendJson(res, 400, { error: err.message });
           return;
         }
+      }
+    }
+
+    // Card Screenshot / Image Storage (stored on server disk under _images, not in JSON)
+    if (pathname === '/api/vault/image') {
+      if (req.method === 'POST') {
+        try {
+          const payload = await parseBody(req, MAX_VAULT_UPLOAD_BODY_SIZE);
+          const rawName = typeof payload.fileName === 'string' ? payload.fileName : 'screenshot.png';
+          const ext = path.extname(path.basename(rawName)).toLowerCase() || '.png';
+          if (!ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+            sendJson(res, 400, { error: 'Format gambar tidak didukung. Gunakan: .png, .jpg, .jpeg, .webp, .gif' });
+            return;
+          }
+          if (typeof payload.contentBase64 !== 'string' || !payload.contentBase64) {
+            sendJson(res, 400, { error: 'Data gambar kosong.' });
+            return;
+          }
+          const imgBuf = Buffer.from(payload.contentBase64, 'base64');
+          if (imgBuf.length === 0 || imgBuf.length > 8 * 1024 * 1024) {
+            sendJson(res, 400, { error: 'Ukuran gambar harus antara 1 byte s.d. 8MB.' });
+            return;
+          }
+          if (!fs.existsSync(vaultImagesDir)) {
+            fs.mkdirSync(vaultImagesDir, { recursive: true });
+          }
+          const resolvedImgDir = fs.realpathSync(vaultImagesDir);
+          const safeFileName = `img-${Date.now()}-${Math.random().toString(36).slice(2, 7)}${ext}`;
+          const destPath = path.resolve(resolvedImgDir, safeFileName);
+          const tmpPath = destPath + '.tmp';
+          fs.writeFileSync(tmpPath, imgBuf);
+          fs.renameSync(tmpPath, destPath);
+
+          sendJson(res, 201, {
+            success: true,
+            fileName: safeFileName,
+            url: `/api/vault/image?name=${encodeURIComponent(safeFileName)}`
+          });
+          return;
+        } catch (err) {
+          sendJson(res, err.statusCode || 400, { error: err.message });
+          return;
+        }
+      }
+
+      if (req.method === 'GET') {
+        const nameParam = reqUrl.searchParams.get('name') || '';
+        const safeName = path.basename(nameParam);
+        const ext = path.extname(safeName).toLowerCase();
+        if (!safeName || !ALLOWED_IMAGE_EXTENSIONS.has(ext)) {
+          sendJson(res, 400, { error: 'Nama gambar tidak valid.' });
+          return;
+        }
+        if (!fs.existsSync(vaultImagesDir)) {
+          sendJson(res, 404, { error: 'Gambar tidak ditemukan.' });
+          return;
+        }
+        const resolvedImgDir = fs.realpathSync(vaultImagesDir);
+        const targetPath = path.resolve(resolvedImgDir, safeName);
+        const prefix = resolvedImgDir.endsWith(path.sep) ? resolvedImgDir : resolvedImgDir + path.sep;
+        if (!targetPath.startsWith(prefix) || !fs.existsSync(targetPath)) {
+          sendJson(res, 404, { error: 'Gambar tidak ditemukan.' });
+          return;
+        }
+        const content = fs.readFileSync(targetPath);
+        res.writeHead(200, {
+          'Content-Type': MIME_TYPES[ext] || 'image/png',
+          'Content-Length': content.length,
+          'Cache-Control': 'public, max-age=86400'
+        });
+        res.end(content);
+        return;
       }
     }
 

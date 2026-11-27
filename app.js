@@ -296,6 +296,7 @@
   let editingAttachments = [];
   let editingComments = [];
   let editingActivity = [];
+  let editingImages = [];
   let selectedColor = '#6366f1';
 
   // --- SERVER & API HELPERS ---
@@ -1874,20 +1875,35 @@
       if (!cd) return;
 
       const files = Array.from(cd.files || []);
+      const imageFiles = files.filter(f => (f.type || '').startsWith('image/'));
+      const docFiles = files.filter(f => !(f.type || '').startsWith('image/'));
       const text = (cd.getData('text/plain') || '').trim();
       if (files.length === 0 && !text) return;
 
       e.preventDefault();
 
+      // 0. Pasted screenshot / image
+      if (imageFiles.length > 0 && isServerAvailable) {
+        openCardModal(null);
+        const nowStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        formTitle.value = `Screenshot (${nowStr})`;
+        if (!formTags.value.trim()) formTags.value = 'ss';
+        for (const imgFile of imageFiles) {
+          await uploadCardImageFile(imgFile);
+        }
+        alertToast('🖼️ Screenshot diunggah — tambah tag lalu klik Simpan.');
+        return;
+      }
+
       // 1. Pasted files (e.g. .md/.pdf/.docx/.xlsx)
-      if (files.length > 0 && typeof docEngine !== 'undefined' && typeof docEngine.processFile === 'function') {
+      if (docFiles.length > 0 && typeof docEngine !== 'undefined' && typeof docEngine.processFile === 'function') {
         openCardModal(null);
         if (cardTypeSelect) {
           cardTypeSelect.value = 'document';
           updateCardTypeView('document');
         }
-        formTitle.value = files[0].name.replace(/\.[^.]+$/, '') || 'Lampiran Dokumen';
-        for (const f of files) {
+        formTitle.value = docFiles[0].name.replace(/\.[^.]+$/, '') || 'Lampiran Dokumen';
+        for (const f of docFiles) {
           try {
             const parsed = await docEngine.processFile(f);
             if (parsed) editingAttachments.push(parsed);
@@ -2110,6 +2126,39 @@
 
     // Checklist add button
     addChecklistBtn.addEventListener('click', addChecklistItem);
+    const addCardImageBtn = document.getElementById('addCardImageBtn');
+    const cardImageInput = document.getElementById('cardImageInput');
+    if (addCardImageBtn && cardImageInput) {
+      addCardImageBtn.addEventListener('click', () => {
+        cardImageInput.value = '';
+        cardImageInput.click();
+      });
+      cardImageInput.addEventListener('change', async (e) => {
+        const files = Array.from(e.target.files || []);
+        for (const f of files) {
+          await uploadCardImageFile(f);
+        }
+      });
+    }
+    if (cardModal) {
+      cardModal.addEventListener('paste', async (e) => {
+        const files = Array.from((e.clipboardData && e.clipboardData.files) || []).filter(f => (f.type || '').startsWith('image/'));
+        if (files.length === 0) return;
+        e.preventDefault();
+        for (const f of files) {
+          await uploadCardImageFile(f);
+        }
+        alertToast('🖼️ Screenshot ditambahkan ke kartu.');
+      });
+    }
+    const closeLightboxBtn = document.getElementById('closeImageLightbox');
+    const lightboxModal = document.getElementById('imageLightboxModal');
+    if (closeLightboxBtn && lightboxModal) {
+      closeLightboxBtn.addEventListener('click', () => { lightboxModal.style.display = 'none'; });
+      lightboxModal.addEventListener('click', (e) => {
+        if (e.target === lightboxModal) lightboxModal.style.display = 'none';
+      });
+    }
     const addCommentBtn = document.getElementById('addCommentBtn');
     const newCommentInput = document.getElementById('newCommentInput');
     if (addCommentBtn) addCommentBtn.addEventListener('click', addCardComment);
@@ -4081,6 +4130,26 @@
     // Assemble Card
     cardEl.appendChild(headerEl);
     if (card.tags && card.tags.length > 0) cardEl.appendChild(tagsEl);
+    // Card images (screenshots stored on server disk)
+    if (Array.isArray(card.images) && card.images.length > 0) {
+      const imgsGrid = document.createElement('div');
+      imgsGrid.className = 'card-images-grid';
+      card.images.forEach(img => {
+        if (!img || !img.url) return;
+        const thumb = document.createElement('img');
+        thumb.className = 'card-image-thumb';
+        thumb.src = apiUrl(img.url);
+        thumb.alt = img.name || 'Screenshot';
+        thumb.loading = 'lazy';
+        thumb.title = 'Klik untuk perbesar gambar';
+        thumb.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openImageLightbox(apiUrl(img.url), img.name || card.title || 'Screenshot');
+        });
+        imgsGrid.appendChild(thumb);
+      });
+      cardEl.appendChild(imgsGrid);
+    }
     // Assignee chips (Kanban cards only - shown when task has assignees)
     if (Array.isArray(card.assignees) && card.assignees.length > 0) {
       const assigneesRow = document.createElement('div');
@@ -4583,6 +4652,7 @@
     editingAttachments = [];
     editingComments = [];
     editingActivity = [];
+    editingImages = [];
     selectedColor = '#6366f1';
 
     let initialType = 'note';
@@ -4651,6 +4721,9 @@
       if (Array.isArray(card.activity)) {
         editingActivity = JSON.parse(JSON.stringify(card.activity));
       }
+      if (Array.isArray(card.images)) {
+        editingImages = JSON.parse(JSON.stringify(card.images));
+      }
 
       if (card.reminder) {
         reminderDateTime.value = card.reminder.datetime ? card.reminder.datetime.slice(0, 16) : '';
@@ -4690,6 +4763,7 @@
 
     renderChecklistEditor();
     renderAttachmentsEditor();
+    renderCardImagesEditor();
     renderCommentsAndActivity();
 
     // Assignee Picker – show only for Kanban tasks in server mode with >1 user
@@ -4825,6 +4899,76 @@
     newChecklistText.value = '';
     renderChecklistEditor();
     newChecklistText.focus();
+  }
+
+  // --- CARD IMAGES / SCREENSHOTS ---
+  function openImageLightbox(src, caption = '') {
+    const modal = document.getElementById('imageLightboxModal');
+    const imgEl = document.getElementById('imageLightboxImg');
+    const capEl = document.getElementById('imageLightboxCaption');
+    if (!modal || !imgEl) return;
+    imgEl.src = src;
+    if (capEl) capEl.textContent = caption;
+    modal.style.display = 'flex';
+  }
+
+  function renderCardImagesEditor() {
+    const listEl = document.getElementById('cardImagesPreviewList');
+    const countEl = document.getElementById('cardImagesCount');
+    if (countEl) countEl.textContent = editingImages.length;
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    editingImages.forEach((img, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'card-image-editor-item';
+      wrap.innerHTML = `
+        <img src="${escapeHtml(apiUrl(img.url))}" alt="${escapeHtml(img.name || 'img')}" title="Klik untuk perbesar">
+        <button type="button" class="card-image-del-btn" title="Hapus gambar">✕</button>
+      `;
+      wrap.querySelector('img').addEventListener('click', () => openImageLightbox(apiUrl(img.url), img.name || 'Screenshot'));
+      wrap.querySelector('.card-image-del-btn').addEventListener('click', () => {
+        editingImages.splice(idx, 1);
+        renderCardImagesEditor();
+      });
+      listEl.appendChild(wrap);
+    });
+  }
+
+  async function uploadCardImageFile(file) {
+    if (!file) return;
+    if (!isServerAvailable) {
+      alert('Unggah gambar membutuhkan koneksi ke server.');
+      return;
+    }
+    try {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const r = String(reader.result || '');
+          const i = r.indexOf(',');
+          resolve(i !== -1 ? r.slice(i + 1) : r);
+        };
+        reader.onerror = () => reject(new Error('Gagal membaca gambar.'));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch(apiUrl('/api/vault/image'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({
+          fileName: file.name || 'screenshot.png',
+          contentBase64: base64
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.url) {
+        editingImages.push({ name: file.name || data.fileName, url: data.url });
+        renderCardImagesEditor();
+      } else {
+        alert(data.error || 'Gagal mengunggah gambar.');
+      }
+    } catch (err) {
+      alert('Gagal mengunggah gambar: ' + err.message);
+    }
   }
 
   // --- COMMENTS & ACTIVITY LOG ---
@@ -5054,6 +5198,7 @@
       attachments: editingAttachments,
       reminder,
       assignees,
+      images: editingImages,
       comments: editingComments,
       activity: nextActivity,
       updatedAt: new Date().toISOString()
