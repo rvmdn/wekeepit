@@ -92,11 +92,7 @@ class AuthManager {
             createdAt: new Date().toISOString()
           }
         ];
-        const dir = path.dirname(path.resolve(this.usersFile));
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(this.usersFile, JSON.stringify(defaultUsers, null, 2), 'utf-8');
+        this._atomicWriteUsers(defaultUsers);
       }
     } catch (err) {
       console.warn('[AuthManager] Gagal inisialisasi berkas pengguna:', err.message);
@@ -104,25 +100,56 @@ class AuthManager {
   }
 
   loadUsers() {
-    try {
-      if (fs.existsSync(this.usersFile)) {
-        const raw = fs.readFileSync(this.usersFile, 'utf-8');
-        return JSON.parse(raw);
+    // Try primary, then .bak if primary is corrupt
+    const candidates = [this.usersFile, this.usersFile + '.bak'];
+    for (const candidate of candidates) {
+      try {
+        if (!fs.existsSync(candidate)) continue;
+        const raw = fs.readFileSync(candidate, 'utf-8');
+        if (!raw || !raw.trim()) continue;
+        const parsed = JSON.parse(raw);
+        if (candidate !== this.usersFile) {
+          console.warn('[AuthManager][RECOVERY] File pengguna utama corrupt, dipulihkan dari .bak');
+        }
+        return parsed;
+      } catch (err) {
+        console.error('[AuthManager] Gagal membaca berkas pengguna:', err.message);
       }
-    } catch (err) {
-      console.error('[AuthManager] Gagal membaca berkas pengguna:', err.message);
     }
     return [];
   }
 
+  /**
+   * Atomic write for users.json — write to .tmp then rename (POSIX atomic).
+   * Keeps previous file as .bak for recovery.
+   */
+  _atomicWriteUsers(users) {
+    const resolved = path.resolve(this.usersFile);
+    const dir = path.dirname(resolved);
+    const tmpPath = resolved + '.tmp';
+    const bakPath = resolved + '.bak';
+
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf-8');
+
+    try {
+      if (fs.existsSync(resolved)) {
+        fs.renameSync(resolved, bakPath);
+      }
+    } catch (bakErr) {
+      console.warn('[AuthManager][WARN] Tidak bisa buat backup pengguna:', bakErr.message);
+    }
+
+    fs.renameSync(tmpPath, resolved);
+    return true;
+  }
+
   saveUsers(users) {
     try {
-      const dir = path.dirname(path.resolve(this.usersFile));
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(this.usersFile, JSON.stringify(users, null, 2), 'utf-8');
-      return true;
+      return this._atomicWriteUsers(users);
     } catch (err) {
       console.error('[AuthManager] Gagal menyimpan berkas pengguna:', err.message);
       return false;

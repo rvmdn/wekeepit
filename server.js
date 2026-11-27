@@ -93,31 +93,67 @@ const MIME_TYPES = {
 };
 
 function readJsonFile(filePath, fallback = {}) {
-  try {
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(data);
+  // Try primary file first, then .bak if primary is corrupt
+  const candidates = [filePath, filePath + '.bak'];
+  for (const candidate of candidates) {
+    try {
+      if (!fs.existsSync(candidate)) continue;
+      const raw = fs.readFileSync(candidate, 'utf-8');
+      if (!raw || !raw.trim()) continue; // empty file → try next
+      const parsed = JSON.parse(raw);
+      if (candidate !== filePath) {
+        // Recovered from backup — log warning
+        console.warn(`[RECOVERY] Primary file corrupt or empty, restored from ${candidate}`);
+      }
+      return parsed;
+    } catch (err) {
+      console.error(`Error reading ${candidate}:`, err.message);
     }
-    if (filePath === DATA_FILE) {
+  }
+  // Fallback to sample data for cards file
+  if (filePath === DATA_FILE) {
+    try {
       const samplePath = path.join(__dirname, 'wekeepit-data.sample.json');
       if (fs.existsSync(samplePath)) {
-        const sampleData = fs.readFileSync(samplePath, 'utf-8');
-        return JSON.parse(sampleData);
+        return JSON.parse(fs.readFileSync(samplePath, 'utf-8'));
       }
-    }
-  } catch (err) {
-    console.error(`Error reading ${filePath}:`, err.message);
+    } catch (_) {}
   }
   return fallback;
 }
 
+/**
+ * Atomic write: write to <filePath>.tmp first, then fs.rename() — which is
+ * a single syscall on Linux (POSIX rename(2) guarantee: atomic, no partial
+ * state visible to readers). Also keeps a .bak of the previous good version.
+ */
 function writeJsonFile(filePath, data) {
   try {
-    const dir = path.dirname(path.resolve(filePath));
+    const resolved = path.resolve(filePath);
+    const dir = path.dirname(resolved);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+
+    const tmpPath = resolved + '.tmp';
+    const bakPath = resolved + '.bak';
+    const payload = JSON.stringify(data, null, 2);
+
+    // 1. Write to temp file
+    fs.writeFileSync(tmpPath, payload, 'utf-8');
+
+    // 2. Rotate: current → .bak (best-effort, non-fatal if it fails)
+    try {
+      if (fs.existsSync(resolved)) {
+        fs.renameSync(resolved, bakPath);
+      }
+    } catch (bakErr) {
+      console.warn(`[WARN] Could not rotate backup for ${resolved}:`, bakErr.message);
+    }
+
+    // 3. Atomic promote: .tmp → primary (POSIX atomic rename)
+    fs.renameSync(tmpPath, resolved);
+
     return true;
   } catch (err) {
     console.error(`Error writing ${filePath}:`, err.message);
