@@ -254,6 +254,58 @@ function createServerApp(options = {}) {
     return target;
   }
 
+  function collectReferencedImageNames() {
+    const names = new Set();
+    const scanCardsList = (list) => {
+      if (!Array.isArray(list)) return;
+      for (const card of list) {
+        if (!card || !Array.isArray(card.images)) continue;
+        for (const img of card.images) {
+          if (!img || typeof img.url !== 'string') continue;
+          const m = img.url.match(/[?&]name=([^&]+)/);
+          if (m && m[1]) {
+            try { names.add(path.basename(decodeURIComponent(m[1]))); } catch {}
+          }
+        }
+      }
+    };
+
+    scanCardsList(readJsonFile(dataFile, []));
+    try {
+      if (fs.existsSync(myBoardsDir)) {
+        for (const f of fs.readdirSync(myBoardsDir)) {
+          if (f.endsWith('.json')) {
+            scanCardsList(readJsonFile(path.join(myBoardsDir, f), []));
+          }
+        }
+      }
+    } catch (_) {}
+    return names;
+  }
+
+  function cleanupOrphanVaultImages(graceMs = 10 * 60 * 1000) {
+    try {
+      if (!fs.existsSync(vaultImagesDir)) return 0;
+      const referenced = collectReferencedImageNames();
+      const now = Date.now();
+      let removed = 0;
+      for (const fname of fs.readdirSync(vaultImagesDir)) {
+        if (referenced.has(fname)) continue;
+        const full = path.join(vaultImagesDir, fname);
+        try {
+          const stat = fs.statSync(full);
+          if (stat.isFile() && (now - stat.mtimeMs) > graceMs) {
+            fs.unlinkSync(full);
+            removed++;
+          }
+        } catch (_) {}
+      }
+      return removed;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   const sseClients = new Map(); // res -> { username, displayName, role, view, editingTitle }
   const LOGIN_MAX_ATTEMPTS = options.loginMaxAttempts || 5;
   const LOGIN_WINDOW_MS = options.loginWindowMs || 5 * 60 * 1000;
@@ -629,6 +681,7 @@ function createServerApp(options = {}) {
           }
           const userFile = getUserBoardFile(ownerUsername);
           writeJsonFile(userFile, myCards);
+          cleanupOrphanVaultImages();
           broadcastToUser(ownerUsername, 'my_cards_updated', { count: myCards.length });
           sendJson(res, 200, { success: true, count: myCards.length });
           return;
@@ -656,6 +709,7 @@ function createServerApp(options = {}) {
           const cards = await parseBody(req);
           if (Array.isArray(cards)) {
             writeJsonFile(dataFile, cards);
+            cleanupOrphanVaultImages();
             broadcastEvent('cards_updated', {
               count: cards.length,
               by: authUser ? authUser.username : 'local'
@@ -702,6 +756,7 @@ function createServerApp(options = {}) {
             cards.unshift(cardPayload);
           }
           writeJsonFile(dataFile, cards);
+          cleanupOrphanVaultImages();
           broadcastEvent('cards_updated', {
             count: cards.length,
             cardId: targetCardId,
@@ -724,6 +779,7 @@ function createServerApp(options = {}) {
           const cards = readJsonFile(dataFile, []);
           const nextCards = cards.filter(c => String(c.id) !== String(targetCardId));
           writeJsonFile(dataFile, nextCards);
+          cleanupOrphanVaultImages();
           broadcastEvent('cards_updated', {
             count: nextCards.length,
             cardId: targetCardId,
