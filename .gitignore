@@ -1,7 +1,13 @@
-# Sensitive User Data & Personal Notes
+# Sensitive User Data, TLS Certificates & Backups
 wekeepit-data.json
 users.json
 wekeepit-index.db*
+*.bak
+*.tmp
+*.pfx
+*.key
+*.crt
+*.pem
 node_modules/
 save_error.log
 startup_error.log
