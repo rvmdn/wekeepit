@@ -1152,8 +1152,40 @@
     reminderService.setCards(cards);
   }
 
+  function getMyBoardUserKey() {
+    return (currentUser && currentUser.username) ? currentUser.username.toLowerCase() : 'local';
+  }
+
+  function getMyBoardStorageMode() {
+    return localStorage.getItem('wekeepit_myboard_mode_' + getMyBoardUserKey()) || 'server';
+  }
+
+  function getMyBoardLocalKey() {
+    return 'wekeepit_myboard_local_' + getMyBoardUserKey();
+  }
+
+  function syncMyBoardStorageSelect() {
+    const sel = document.getElementById('myBoardStorageMode');
+    if (sel) sel.value = getMyBoardStorageMode();
+  }
+
   async function loadMyCards() {
-    if (!isServerAvailable || !authEnabled || !currentUser) {
+    if (!authEnabled || !currentUser) {
+      myCards = [];
+      return;
+    }
+    syncMyBoardStorageSelect();
+    if (getMyBoardStorageMode() === 'local') {
+      try {
+        const raw = localStorage.getItem(getMyBoardLocalKey());
+        const parsed = raw ? JSON.parse(raw) : [];
+        myCards = Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        myCards = [];
+      }
+      return;
+    }
+    if (!isServerAvailable) {
       myCards = [];
       return;
     }
@@ -1167,7 +1199,12 @@
   }
 
   async function saveMyCards() {
-    if (!isServerAvailable || !authEnabled || !currentUser) return;
+    if (!authEnabled || !currentUser) return;
+    if (getMyBoardStorageMode() === 'local') {
+      localStorage.setItem(getMyBoardLocalKey(), JSON.stringify(myCards));
+      return;
+    }
+    if (!isServerAvailable) return;
     try {
       await fetch(apiUrl('/api/my-cards'), {
         method: 'POST',
@@ -1861,6 +1898,62 @@
     const emptyMyBoardBtn = document.getElementById('emptyMyBoardActionBtn');
     if (newMyBoardBtn) newMyBoardBtn.addEventListener('click', () => openCardModal(null, 'myboard'));
     if (emptyMyBoardBtn) emptyMyBoardBtn.addEventListener('click', () => openCardModal(null, 'myboard'));
+
+    const myBoardStorageModeEl = document.getElementById('myBoardStorageMode');
+    if (myBoardStorageModeEl) {
+      myBoardStorageModeEl.addEventListener('change', async () => {
+        const nextMode = myBoardStorageModeEl.value === 'local' ? 'local' : 'server';
+        const prevCards = [...myCards];
+        localStorage.setItem('wekeepit_myboard_mode_' + getMyBoardUserKey(), nextMode);
+        await loadMyCards();
+        if (prevCards.length > 0 && myCards.length === 0) {
+          if (confirm(`Pindahkan ${prevCards.length} catatan My Board Anda ke mode ${nextMode === 'local' ? 'Lokal PC Ini' : 'Server'}?`)) {
+            myCards = prevCards;
+            await saveMyCards();
+          }
+        }
+        renderMyBoard();
+        alertToast(`Penyimpanan My Board diubah ke: ${nextMode === 'local' ? '💻 Lokal PC Ini' : '☁️ Server'}`);
+      });
+    }
+
+    const exportMyBoardBtn = document.getElementById('exportMyBoardBtn');
+    if (exportMyBoardBtn) {
+      exportMyBoardBtn.addEventListener('click', () => {
+        const uname = getMyBoardUserKey();
+        const dateStr = new Date().toISOString().slice(0, 10);
+        downloadBlobFile(`myboard-${uname}-${dateStr}.json`, JSON.stringify(myCards, null, 2), 'application/json;charset=utf-8');
+        alertToast('📥 Cadangan My Board berhasil diunduh.');
+      });
+    }
+
+    const importMyBoardBtn = document.getElementById('importMyBoardBtn');
+    const importMyBoardInput = document.getElementById('importMyBoardInput');
+    if (importMyBoardBtn && importMyBoardInput) {
+      importMyBoardBtn.addEventListener('click', () => {
+        importMyBoardInput.value = '';
+        importMyBoardInput.click();
+      });
+      importMyBoardInput.addEventListener('change', (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            const imported = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.cards) ? parsed.cards : null);
+            if (!imported) throw new Error('Format JSON My Board tidak valid.');
+            myCards = imported;
+            await saveMyCards();
+            renderMyBoard();
+            alertToast(`📤 ${imported.length} catatan My Board berhasil diimpor.`);
+          } catch (err) {
+            alert('Gagal mengimpor My Board: ' + err.message);
+          }
+        };
+        reader.readAsText(f);
+      });
+    }
 
     // Global Ctrl+V Smart Pre-fill (opens Card Modal pre-populated from clipboard)
     document.addEventListener('paste', async (e) => {

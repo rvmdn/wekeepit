@@ -199,9 +199,18 @@
             </h2>
             <p style="font-size: 0.8rem; margin: 0; color: var(--text-muted);">Catatan di sini bersifat privat dan hanya dapat dilihat serta dikelola oleh akun Anda sendiri.</p>
           </div>
-          <button id="newMyBoardCardBtn" class="btn btn-primary" style="font-size: 0.82rem; padding: 7px 16px;">
-            <span>➕ Catatan Pribadi</span>
-          </button>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <select id="myBoardStorageMode" class="form-select" style="font-size: 0.78rem; padding: 6px 10px; width: auto;" title="Pilih lokasi penyimpanan My Board Anda">
+              <option value="server">☁️ Server (Ikut Akun)</option>
+              <option value="local">💻 Lokal PC Ini (Browser)</option>
+            </select>
+            <button type="button" id="exportMyBoardBtn" class="btn btn-secondary" style="font-size: 0.78rem; padding: 7px 12px;" title="Unduh salinan My Board ke file JSON">📥 Ekspor</button>
+            <button type="button" id="importMyBoardBtn" class="btn btn-secondary" style="font-size: 0.78rem; padding: 7px 12px;" title="Impor catatan My Board dari file JSON">📤 Impor</button>
+            <input type="file" id="importMyBoardInput" accept=".json" style="display: none;">
+            <button id="newMyBoardCardBtn" class="btn btn-primary" style="font-size: 0.82rem; padding: 7px 16px;">
+              <span>➕ Catatan Pribadi</span>
+            </button>
+          </div>
         </div>
 
         <section class="board-section">
