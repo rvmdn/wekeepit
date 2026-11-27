@@ -277,6 +277,25 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       });
       assert.strictEqual(delCardB.statusCode, 200);
 
+      // 12c. Login brute-force rate limit (5 failed attempts -> 429 Too Many Requests)
+      for (let i = 0; i < 4; i++) {
+        const failRes = await makeRequest(app.server, {
+          path: '/api/auth/login',
+          method: 'POST'
+        }, { username: 'editor1', password: 'wrong-password' });
+        assert.strictEqual(failRes.statusCode, 401);
+      }
+      const lockedRes = await makeRequest(app.server, {
+        path: '/api/auth/login',
+        method: 'POST'
+      }, { username: 'editor1', password: 'wrong-password' });
+      assert.strictEqual(lockedRes.statusCode, 429);
+      const blockedEvenIfCorrect = await makeRequest(app.server, {
+        path: '/api/auth/login',
+        method: 'POST'
+      }, { username: 'editor1', password: 'password123' });
+      assert.strictEqual(blockedEvenIfCorrect.statusCode, 429);
+
       // 13. Logout
       const logoutRes = await makeRequest(app.server, {
         path: '/api/auth/logout',

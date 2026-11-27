@@ -255,6 +255,10 @@ function createServerApp(options = {}) {
   }
 
   const sseClients = new Map(); // res -> { username, displayName, role, view, editingTitle }
+  const LOGIN_MAX_ATTEMPTS = options.loginMaxAttempts || 5;
+  const LOGIN_WINDOW_MS = options.loginWindowMs || 5 * 60 * 1000;
+  const LOGIN_LOCKOUT_MS = options.loginLockoutMs || 3 * 60 * 1000;
+  const loginAttempts = new Map(); // key: ip::username -> { count, firstAttemptAt, lockedUntil }
 
   function getActivePresenceList() {
     const byUser = new Map();
@@ -402,7 +406,8 @@ function createServerApp(options = {}) {
           user: {
             username: authUser.username,
             role: authUser.role,
-            displayName: authUser.displayName
+            displayName: authUser.displayName,
+            statusText: authUser.statusText || ''
           }
         });
       } else {
@@ -420,11 +425,50 @@ function createServerApp(options = {}) {
         try {
           const body = await parseBody(req);
           const { username, password } = body;
+          const clientIp = (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : '')
+            || (req.socket && req.socket.remoteAddress)
+            || 'unknown';
+          const attemptKey = `${clientIp}::${String(username || '').trim().toLowerCase()}`;
+          const now = Date.now();
+
+          if (loginAttempts.size > 1000) {
+            for (const [k, v] of loginAttempts.entries()) {
+              if ((!v.lockedUntil || v.lockedUntil <= now) && now - v.firstAttemptAt > LOGIN_WINDOW_MS) {
+                loginAttempts.delete(k);
+              }
+            }
+          }
+
+          const existingAttempt = loginAttempts.get(attemptKey);
+          if (existingAttempt && existingAttempt.lockedUntil && existingAttempt.lockedUntil > now) {
+            const waitSec = Math.ceil((existingAttempt.lockedUntil - now) / 1000);
+            res.setHeader('Retry-After', String(waitSec));
+            sendJson(res, 429, { error: `Terlalu banyak percobaan login gagal. Coba lagi dalam ${waitSec} detik.` });
+            return;
+          }
+
           const result = authManager.login(username, password);
           if (!result.success) {
+            let rec = existingAttempt;
+            if (!rec || (now - rec.firstAttemptAt > LOGIN_WINDOW_MS) || (rec.lockedUntil && rec.lockedUntil <= now)) {
+              rec = { count: 1, firstAttemptAt: now, lockedUntil: 0 };
+            } else {
+              rec.count += 1;
+            }
+            if (rec.count >= LOGIN_MAX_ATTEMPTS) {
+              rec.lockedUntil = now + LOGIN_LOCKOUT_MS;
+              loginAttempts.set(attemptKey, rec);
+              const waitSec = Math.ceil(LOGIN_LOCKOUT_MS / 1000);
+              res.setHeader('Retry-After', String(waitSec));
+              sendJson(res, 429, { error: `Terlalu banyak percobaan login gagal. Akun dikunci sementara selama ${waitSec} detik.` });
+              return;
+            }
+            loginAttempts.set(attemptKey, rec);
             sendJson(res, 401, { error: result.error });
             return;
           }
+
+          loginAttempts.delete(attemptKey);
 
           const secureFlag = req.socket && req.socket.encrypted ? '; Secure' : '';
           res.setHeader('Set-Cookie', `wekeepit_token=${result.token}; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Max-Age=${7 * 24 * 3600}`);
