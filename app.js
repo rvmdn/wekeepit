@@ -36,6 +36,8 @@
   let searchDebounceTimer = null;
   let foldersList = [];
   let indexedDocsList = [];
+  let currentVaultSubPath = '';
+  let currentVaultListing = { folders: [], files: [] };
 
   // --- FILE EXPLORER STATE (Detail, Tree, Card) ---
   let explorerViewMode = 'detail'; // 'detail', 'tree', 'card'
@@ -2206,7 +2208,8 @@
               headers: { 'Content-Type': 'application/json; charset=utf-8' },
               body: JSON.stringify({
                 fileName: file.name,
-                contentBase64: base64
+                contentBase64: base64,
+                subPath: currentVaultSubPath
               })
             });
             const data = await res.json();
@@ -2229,6 +2232,33 @@
         }
         if (lastError) {
           alert(lastError);
+        }
+      });
+    }
+
+    const newVaultFolderBtn = document.getElementById('newVaultFolderBtn');
+    if (newVaultFolderBtn) {
+      newVaultFolderBtn.addEventListener('click', async () => {
+        const folderName = prompt('Masukkan nama folder baru di dalam WeKeepIt Vault:');
+        if (!folderName || !folderName.trim()) return;
+        try {
+          const res = await fetch(apiUrl('/api/vault/mkdir'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            body: JSON.stringify({
+              parentSubPath: currentVaultSubPath,
+              folderName: folderName.trim()
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            alertToast(`📁 Folder "${data.folderName}" berhasil dibuat.`);
+            await loadFoldersAndDocuments();
+          } else {
+            alert(data.error || 'Gagal membuat folder.');
+          }
+        } catch (err) {
+          alert('Terjadi kesalahan: ' + err.message);
         }
       });
     }
@@ -2494,18 +2524,24 @@
       return;
     }
     try {
-      const [foldersRes, docsRes, statusRes] = await Promise.all([
+      const [foldersRes, docsRes, statusRes, vaultRes] = await Promise.all([
         fetch(apiUrl('/api/folders?_t=') + Date.now()),
         fetch(apiUrl('/api/documents?_t=') + Date.now()),
-        fetch(apiUrl('/api/indexer/status?_t=') + Date.now())
+        fetch(apiUrl('/api/indexer/status?_t=') + Date.now()),
+        fetch(apiUrl('/api/vault/list?subPath=' + encodeURIComponent(currentVaultSubPath) + '&_t=' + Date.now()))
       ]);
 
       if (foldersRes.ok) {
         foldersList = await foldersRes.json();
         renderFoldersList();
       }
+      if (vaultRes.ok) {
+        currentVaultListing = await vaultRes.json();
+      }
       if (docsRes.ok) {
         indexedDocsList = await docsRes.json();
+        renderIndexedDocsTable();
+      } else if (vaultRes.ok) {
         renderIndexedDocsTable();
       }
       if (statusRes.ok) {
@@ -2629,45 +2665,126 @@
     });
   }
 
+  function renderVaultBreadcrumb() {
+    const bar = document.getElementById('explorerBreadcrumbBar');
+    if (!bar) return;
+    const parts = currentVaultSubPath ? currentVaultSubPath.split('/').filter(Boolean) : [];
+    let html = `<span class="breadcrumb-item ${parts.length === 0 ? 'active' : ''}" data-subpath="">🏠 Vault Root</span>`;
+    let acc = [];
+    parts.forEach((p, idx) => {
+      acc.push(p);
+      const sub = acc.join('/');
+      const isLast = idx === parts.length - 1;
+      html += ` <span style="opacity:0.5;">/</span> <span class="breadcrumb-item ${isLast ? 'active' : ''}" data-subpath="${escapeHtml(sub)}">📁 ${escapeHtml(p)}</span>`;
+    });
+    bar.innerHTML = html;
+    bar.querySelectorAll('.breadcrumb-item:not(.active)').forEach(el => {
+      el.addEventListener('click', () => {
+        currentVaultSubPath = el.getAttribute('data-subpath') || '';
+        loadFoldersAndDocuments();
+      });
+    });
+  }
+
   function renderIndexedDocsTable() {
     if (!indexedFilesTableBody) return;
     indexedFilesTableBody.innerHTML = '';
+    renderVaultBreadcrumb();
+
+    const vaultFolders = Array.isArray(currentVaultListing.folders) ? currentVaultListing.folders : [];
+    const vaultFiles = Array.isArray(currentVaultListing.files) ? currentVaultListing.files : [];
+    const useVaultExplorer = isServerAvailable && (vaultFolders.length > 0 || vaultFiles.length > 0 || currentVaultSubPath !== '');
+    const docsToDisplay = useVaultExplorer ? vaultFiles : indexedDocsList;
 
     if (indexedFilesBadge) {
-      indexedFilesBadge.textContent = `${indexedDocsList.length} berkas`;
+      const totalItems = vaultFolders.length + docsToDisplay.length;
+      indexedFilesBadge.textContent = `${docsToDisplay.length} berkas${vaultFolders.length ? `, ${vaultFolders.length} folder` : ''}`;
+      if (!useVaultExplorer) indexedFilesBadge.textContent = `${indexedDocsList.length} berkas`;
     }
 
-    if (!Array.isArray(indexedDocsList) || indexedDocsList.length === 0) {
+    if (vaultFolders.length === 0 && (!Array.isArray(docsToDisplay) || docsToDisplay.length === 0)) {
       indexedFilesTableBody.innerHTML = `
         <tr>
-          <td colspan="6" class="table-empty-cell">Belum ada dokumen yang selesai diindeks. Tambahkan folder dan lakukan pemindaian.</td>
+          <td colspan="6" class="table-empty-cell">${currentVaultSubPath ? 'Folder ini masih kosong. Unggah dokumen atau buat subfolder baru.' : 'Belum ada dokumen. Klik Unggah Dokumen atau Tambah Folder.'}</td>
         </tr>
       `;
       return;
     }
 
-    indexedDocsList.forEach(doc => {
+    const isViewer = document.body.classList.contains('role-viewer');
+
+    // 1. Back to parent row if inside subfolder
+    if (currentVaultSubPath) {
+      const parentParts = currentVaultSubPath.split('/').filter(Boolean);
+      parentParts.pop();
+      const parentSub = parentParts.join('/');
+      const upTr = document.createElement('tr');
+      upTr.className = 'vault-folder-row';
+      upTr.innerHTML = `
+        <td colspan="6" style="cursor:pointer; font-weight:600; color:var(--accent-cyan, #38bdf8);">
+          ⬆️ .. (Kembali ke ${parentSub ? escapeHtml(parentSub) : 'Vault Root'})
+        </td>
+      `;
+      upTr.addEventListener('click', () => {
+        currentVaultSubPath = parentSub;
+        loadFoldersAndDocuments();
+      });
+      indexedFilesTableBody.appendChild(upTr);
+    }
+
+    // 2. Subfolder rows
+    vaultFolders.forEach(folder => {
+      const fTr = document.createElement('tr');
+      fTr.className = 'vault-folder-row';
+      fTr.innerHTML = `
+        <td style="cursor:pointer;">
+          <span style="margin-right: 0.35rem;">📁</span>
+          <strong>${escapeHtml(folder.name)}</strong>
+        </td>
+        <td><code>FOLDER</code></td>
+        <td>—</td>
+        <td>—</td>
+        <td><span class="badge badge-success">Folder</span></td>
+        <td>
+          <div class="doc-item-actions">
+            <button type="button" class="btn-doc-action btn-enter-folder" title="Buka subfolder ini">📂 Buka</button>
+          </div>
+        </td>
+      `;
+      const openSub = () => {
+        currentVaultSubPath = folder.subPath;
+        loadFoldersAndDocuments();
+      };
+      fTr.querySelector('td').addEventListener('click', openSub);
+      fTr.querySelector('.btn-enter-folder').addEventListener('click', openSub);
+      indexedFilesTableBody.appendChild(fTr);
+    });
+
+    // 3. Document file rows
+    docsToDisplay.forEach(doc => {
       const tr = document.createElement('tr');
       const ext = (doc.extension || '').toLowerCase();
       let docIcon = '📄';
       if (ext === '.pdf') docIcon = '📕';
       else if (ext === '.docx') docIcon = '📘';
-      else if (ext === '.xlsx') docIcon = '📊';
+      else if (ext === '.xlsx') docIcon = '📗';
+      else if (ext === '.md') docIcon = '📝';
 
+      const displayName = doc.file_name || doc.fileName || doc.name || (doc.path ? doc.path.split(/[/\\]/).pop() : '') || '(Tanpa Nama)';
       const formattedSize = docEngine.formatSize(doc.size || 0);
       const chunkCount = doc.chunk_count !== undefined ? doc.chunk_count : (doc.chunkCount || 0);
 
       let statusBadge = '<span class="badge badge-success">✓ Terindeks</span>';
       if (doc.status === 'failed' || doc.status === 'error') {
         statusBadge = `<span class="badge badge-danger" title="${escapeHtml(doc.last_error || 'Gagal diproses')}">✕ Gagal</span>`;
-      } else if (doc.status === 'processing') {
+      } else if (doc.status === 'processing' || doc.status === 'pending') {
         statusBadge = '<span class="badge badge-warning">⏳ Memproses</span>';
       }
 
       tr.innerHTML = `
         <td>
           <span style="margin-right: 0.35rem;">${docIcon}</span>
-          <strong title="${escapeHtml(doc.path)}">${escapeHtml(doc.file_name || doc.fileName || '')}</strong>
+          <strong title="${escapeHtml(doc.path || displayName)}">${escapeHtml(displayName)}</strong>
         </td>
         <td><code>${escapeHtml(ext.toUpperCase())}</code></td>
         <td>${formattedSize}</td>
@@ -2675,22 +2792,38 @@
         <td>${statusBadge}</td>
         <td>
           <div class="doc-item-actions">
-            <button type="button" class="btn-doc-action btn-open-file" title="Buka berkas di aplikasi default">
-              📂 Buka
-            </button>
-            <button type="button" class="btn-doc-action btn-open-folder" title="Tampilkan lokasi berkas di folder">
-              📍 Folder
-            </button>
+            ${doc.id ? `<button type="button" class="btn-doc-action btn-download-doc" title="Unduh Dokumen ke Perangkat Anda">⬇️ Unduh</button>` : ''}
+            ${(!isViewer && useVaultExplorer) ? `<button type="button" class="btn-doc-action btn-delete-vault-doc" title="Hapus Berkas dari Vault" style="color:#ef4444;">🗑️</button>` : ''}
+            <button type="button" class="btn-doc-action btn-open-file" title="Buka berkas di server">📂 Buka</button>
           </div>
         </td>
       `;
 
+      const dlBtn = tr.querySelector('.btn-download-doc');
+      if (dlBtn) {
+        dlBtn.addEventListener('click', () => {
+          window.open(apiUrl('/api/vault/download?id=' + encodeURIComponent(doc.id)), '_blank');
+        });
+      }
+
+      const delBtn = tr.querySelector('.btn-delete-vault-doc');
+      if (delBtn) {
+        delBtn.addEventListener('click', async () => {
+          if (!confirm(`Hapus permanen berkas "${displayName}" dari Vault?`)) return;
+          const q = doc.id ? ('id=' + encodeURIComponent(doc.id)) : ('path=' + encodeURIComponent(doc.path));
+          const res = await fetch(apiUrl('/api/vault/file?' + q), { method: 'DELETE' });
+          if (res.ok) {
+            alertToast(`Berkas "${displayName}" dihapus.`);
+            await loadFoldersAndDocuments();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Gagal menghapus berkas.');
+          }
+        });
+      }
+
       tr.querySelector('.btn-open-file').addEventListener('click', () => {
         openLocalPath(doc.path, false);
-      });
-
-      tr.querySelector('.btn-open-folder').addEventListener('click', () => {
-        openLocalPath(doc.path, true);
       });
 
       indexedFilesTableBody.appendChild(tr);

@@ -1036,14 +1036,34 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
           }
 
           const resolvedFolder = fs.realpathSync(targetFolder.path);
+          let targetSubDir = resolvedFolder;
+          if (!payload.folderId && typeof payload.subPath === 'string' && payload.subPath.trim()) {
+            const relParts = payload.subPath.split(/[/\\]+/).map(s => s.trim()).filter(Boolean);
+            for (const seg of relParts) {
+              if (seg === '.' || seg === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(seg)) {
+                sendJson(res, 400, { error: 'Nama subfolder tidak valid.' });
+                return;
+              }
+            }
+            targetSubDir = path.resolve(resolvedFolder, ...relParts);
+            const rootPrefix = resolvedFolder.endsWith(path.sep) ? resolvedFolder : resolvedFolder + path.sep;
+            if (!targetSubDir.startsWith(rootPrefix) && targetSubDir !== resolvedFolder) {
+              sendJson(res, 403, { error: '403 Forbidden: Subfolder di luar Vault.' });
+              return;
+            }
+            if (!fs.existsSync(targetSubDir)) {
+              fs.mkdirSync(targetSubDir, { recursive: true });
+            }
+          }
+
           let finalName = baseName;
-          let destPath = path.resolve(resolvedFolder, finalName);
+          let destPath = path.resolve(targetSubDir, finalName);
 
           // Avoid silent overwrite on filename collision
           if (fs.existsSync(destPath)) {
             const stem = path.basename(baseName, ext);
             finalName = `${stem}-${Date.now()}${ext}`;
-            destPath = path.resolve(resolvedFolder, finalName);
+            destPath = path.resolve(targetSubDir, finalName);
           }
 
           // Strict path boundary check
@@ -1076,6 +1096,190 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
           return;
         } catch (err) {
           sendJson(res, err.statusCode || 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    // Vault File Explorer: list subfolders & files inside defaultVaultDir
+    if (pathname === '/api/vault/list') {
+      if (req.method === 'GET') {
+        try {
+          if (!fs.existsSync(defaultVaultDir)) {
+            fs.mkdirSync(defaultVaultDir, { recursive: true });
+          }
+          const resolvedVault = fs.realpathSync(defaultVaultDir);
+          const subParam = reqUrl.searchParams.get('subPath') || '';
+          const relParts = subParam.split(/[/\\]+/).map(s => s.trim()).filter(Boolean);
+          for (const seg of relParts) {
+            if (seg === '.' || seg === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(seg)) {
+              sendJson(res, 400, { error: 'Path subfolder tidak valid.' });
+              return;
+            }
+          }
+          const currentDir = relParts.length > 0 ? path.resolve(resolvedVault, ...relParts) : resolvedVault;
+          const rootPrefix = resolvedVault.endsWith(path.sep) ? resolvedVault : resolvedVault + path.sep;
+          if (currentDir !== resolvedVault && !currentDir.startsWith(rootPrefix)) {
+            sendJson(res, 403, { error: '403 Forbidden: Akses di luar Vault ditolak.' });
+            return;
+          }
+          if (!fs.existsSync(currentDir)) {
+            sendJson(res, 200, { rootPath: resolvedVault, subPath: relParts.join('/'), folders: [], files: [] });
+            return;
+          }
+
+          const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+          const allDbDocs = db.getAllDocuments();
+          const docByPath = new Map();
+          for (const d of allDbDocs) {
+            if (d && d.path) docByPath.set(path.resolve(d.path).toLowerCase(), d);
+          }
+
+          const folders = [];
+          const files = [];
+          for (const ent of entries) {
+            if (ent.name.startsWith('.')) continue;
+            const full = path.resolve(currentDir, ent.name);
+            if (ent.isDirectory()) {
+              folders.push({
+                name: ent.name,
+                subPath: [...relParts, ent.name].join('/'),
+                path: full
+              });
+            } else if (ent.isFile()) {
+              const ext = path.extname(ent.name).toLowerCase();
+              if (!ALLOWED_DOC_EXTENSIONS.has(ext)) continue;
+              const stat = fs.statSync(full);
+              const dbDoc = docByPath.get(full.toLowerCase());
+              files.push({
+                id: dbDoc ? dbDoc.id : null,
+                file_name: ent.name,
+                extension: ext,
+                size: stat.size,
+                chunk_count: dbDoc ? (dbDoc.chunk_count || 0) : 0,
+                status: dbDoc ? dbDoc.status : 'pending',
+                path: full
+              });
+            }
+          }
+          folders.sort((a, b) => a.name.localeCompare(b.name));
+          files.sort((a, b) => a.file_name.localeCompare(b.file_name));
+
+          sendJson(res, 200, {
+            rootPath: resolvedVault,
+            subPath: relParts.join('/'),
+            folders,
+            files
+          });
+          return;
+        } catch (err) {
+          sendJson(res, 500, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    // Vault Create Subfolder
+    if (pathname === '/api/vault/mkdir') {
+      if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.WRITE_CARDS))) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda (Viewer) tidak memiliki izin membuat folder.' });
+          return;
+        }
+        try {
+          const payload = await parseBody(req);
+          const rawName = String(payload.folderName || '').trim();
+          const cleanName = rawName.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
+          if (!cleanName || cleanName === '.' || cleanName === '..') {
+            sendJson(res, 400, { error: 'Nama folder tidak valid.' });
+            return;
+          }
+
+          if (!fs.existsSync(defaultVaultDir)) {
+            fs.mkdirSync(defaultVaultDir, { recursive: true });
+          }
+          const resolvedVault = fs.realpathSync(defaultVaultDir);
+          const parentSub = String(payload.parentSubPath || '').trim();
+          const relParts = parentSub.split(/[/\\]+/).map(s => s.trim()).filter(Boolean);
+          for (const seg of relParts) {
+            if (seg === '.' || seg === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(seg)) {
+              sendJson(res, 400, { error: 'Path induk tidak valid.' });
+              return;
+            }
+          }
+          const targetDir = path.resolve(resolvedVault, ...relParts, cleanName);
+          const rootPrefix = resolvedVault.endsWith(path.sep) ? resolvedVault : resolvedVault + path.sep;
+          if (!targetDir.startsWith(rootPrefix)) {
+            sendJson(res, 403, { error: '403 Forbidden: Lokasi folder di luar Vault.' });
+            return;
+          }
+          if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
+          }
+
+          // Ensure root vault is registered
+          const existing = folderManager.listFolders().find(f => {
+            try { return path.resolve(f.path).toLowerCase() === resolvedVault.toLowerCase(); } catch { return false; }
+          });
+          if (!existing) {
+            await folderManager.addFolder(resolvedVault, { name: 'WeKeepIt Vault (Server)' });
+          }
+
+          broadcastEvent('vault_updated', { by: authUser ? authUser.username : 'local' });
+          sendJson(res, 201, { success: true, folderName: cleanName, subPath: [...relParts, cleanName].join('/') });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    // Vault Delete File (Admin & Editor only, restricted to defaultVaultDir)
+    if (pathname === '/api/vault/file') {
+      if (req.method === 'DELETE') {
+        if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.WRITE_CARDS))) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda (Viewer) tidak memiliki izin menghapus berkas.' });
+          return;
+        }
+        try {
+          const docId = reqUrl.searchParams.get('id');
+          const filePathParam = reqUrl.searchParams.get('path');
+          let targetPath = '';
+          let folderId = null;
+
+          if (docId) {
+            const doc = db.getAllDocuments().find(d => String(d.id) === String(docId));
+            if (doc) {
+              targetPath = doc.path;
+              folderId = doc.folder_id || doc.folderId;
+            }
+          } else if (filePathParam) {
+            targetPath = filePathParam;
+          }
+
+          if (!targetPath || !fs.existsSync(targetPath)) {
+            sendJson(res, 404, { error: 'Berkas tidak ditemukan.' });
+            return;
+          }
+
+          const resolvedVault = fs.existsSync(defaultVaultDir) ? fs.realpathSync(defaultVaultDir) : path.resolve(defaultVaultDir);
+          const canonicalTarget = fs.realpathSync(targetPath);
+          const rootPrefix = resolvedVault.endsWith(path.sep) ? resolvedVault : resolvedVault + path.sep;
+          if (!canonicalTarget.toLowerCase().startsWith(rootPrefix.toLowerCase())) {
+            sendJson(res, 403, { error: '403 Forbidden: Hanya berkas di dalam WeKeepIt Vault yang dapat dihapus.' });
+            return;
+          }
+
+          fs.unlinkSync(canonicalTarget);
+          if (folderId) {
+            await documentIndexer.reindexFolder(folderId);
+          }
+          broadcastEvent('vault_updated', { by: authUser ? authUser.username : 'local' });
+          sendJson(res, 200, { success: true });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
           return;
         }
       }

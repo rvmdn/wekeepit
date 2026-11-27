@@ -5608,3 +5608,6 @@ body.role-viewer #myBoardView .card-action-btn[data-action="delete"] {
   border-radius: 999px;
   border: 1px solid var(--border-subtle);
 }
+
+body.role-viewer #newVaultFolderBtn { display: none !important; }
+.vault-folder-row:hover td { background: rgba(56, 189, 248, 0.08); }
