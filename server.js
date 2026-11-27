@@ -963,23 +963,25 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     });
   });
 
-  // Wrap server.listen to strictly enforce loopback binding even if non-loopback host is passed directly
+  // Wrap server.listen to strictly enforce loopback binding unless ALLOW_REMOTE_HOST=true
   const originalListen = server.listen.bind(server);
+
+  function sanitizeListenHost(candidate) {
+    if (process.env.ALLOW_REMOTE_HOST === 'true') {
+      return resolveLoopbackHost(candidate);
+    }
+    if (!isLoopbackHost(candidate)) {
+      console.warn(`[Security] Host '${candidate}' bukan loopback. Mengabaikan secara aman dan menggunakan fallback loopback '127.0.0.1'.`);
+      return '127.0.0.1';
+    }
+    return resolveLoopbackHost(candidate);
+  }
 
   server.listen = function (...args) {
     // Support options object signature: server.listen(options[, callback])
     if (args[0] && typeof args[0] === 'object') {
       const opts = { ...args[0] };
-      if (opts.host) {
-        if (!isLoopbackHost(opts.host)) {
-          console.warn(`[Security] Host '${opts.host}' bukan loopback. Mengabaikan secara aman dan menggunakan fallback loopback '127.0.0.1'.`);
-          opts.host = '127.0.0.1';
-        } else {
-          opts.host = resolveLoopbackHost(opts.host);
-        }
-      } else {
-        opts.host = HOST;
-      }
+      opts.host = opts.host ? sanitizeListenHost(opts.host) : HOST;
       return originalListen(opts, args[1]);
     }
 
@@ -989,12 +991,7 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     let callback;
 
     if (typeof args[1] === 'string') {
-      if (!isLoopbackHost(args[1])) {
-        console.warn(`[Security] Host '${args[1]}' bukan loopback. Mengabaikan secara aman dan menggunakan fallback loopback '127.0.0.1'.`);
-        host = '127.0.0.1';
-      } else {
-        host = resolveLoopbackHost(args[1]);
-      }
+      host = sanitizeListenHost(args[1]);
       callback = typeof args[2] === 'function' ? args[2] : (typeof args[3] === 'function' ? args[3] : undefined);
     } else if (typeof args[1] === 'function') {
       callback = args[1];
