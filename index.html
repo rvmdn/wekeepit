@@ -103,6 +103,9 @@
         <button class="domain-tab active" id="tabDomainBoard" data-domain="board">
           📌 Notice Board
         </button>
+        <button class="domain-tab" id="tabMyBoard" data-domain="myboard" style="display: none;">
+          🔒 My Board <span class="tab-count" id="myBoardBadge" style="display: none;">0</span>
+        </button>
         <button class="domain-tab" id="tabDomainKanban" data-domain="kanban">
           ⚡ Kanban Flow <span class="tab-count" id="countKanbanFlow" style="display: none;">0</span>
         </button>
@@ -183,6 +186,33 @@
           <h3 class="empty-title">Belum ada catatan</h3>
           <p class="empty-desc" id="emptyDesc">Mulai buat kartu catatan, simpan tautan & role akses, atau atur aktivitas harian.</p>
           <button id="emptyActionBtn" class="btn btn-primary">➕ Buat Catatan Pertama</button>
+        </div>
+      </div>
+
+      <!-- ================= VIEW 1B: MY BOARD (PRIVATE PER-USER) ================= -->
+      <div id="myBoardView" class="view-panel" style="display: none;">
+        <div class="kanban-header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 12px; padding: 0.5rem 0.25rem;">
+          <div>
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin: 0 0 4px 0; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+              <span>🔒 My Board (Catatan Pribadi)</span>
+              <span class="badge" id="myBoardTotalBadge" style="font-size: 0.75rem; background: var(--bg-hover); padding: 2px 10px; border-radius: 999px; border: 1px solid var(--border-subtle); color: var(--text-secondary);">0 Catatan</span>
+            </h2>
+            <p style="font-size: 0.8rem; margin: 0; color: var(--text-muted);">Catatan di sini bersifat privat dan hanya dapat dilihat serta dikelola oleh akun Anda sendiri.</p>
+          </div>
+          <button id="newMyBoardCardBtn" class="btn btn-primary" style="font-size: 0.82rem; padding: 7px 16px;">
+            <span>➕ Catatan Pribadi</span>
+          </button>
+        </div>
+
+        <section class="board-section">
+          <div class="card-grid" id="myBoardCardsGrid"></div>
+        </section>
+
+        <div id="myBoardEmptyState" class="empty-state" style="display: none;">
+          <div class="empty-icon">🔒</div>
+          <h3 class="empty-title">My Board Anda masih kosong</h3>
+          <p class="empty-desc">Simpan catatan kerja pribadi, link referensi, atau checklist harian yang hanya ingin Anda lihat sendiri.</p>
+          <button id="emptyMyBoardActionBtn" class="btn btn-primary">➕ Buat Catatan Pribadi Pertama</button>
         </div>
       </div>
 

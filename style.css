@@ -5406,3 +5406,13 @@ html.is-web-browser body.theme-acrylic {
   border: 2px solid var(--bg-surface, #161b22);
   margin-left: -6px;
 }
+
+/* My Board (Private per-user): Viewer can still edit/delete their own personal cards */
+body.role-viewer #myBoardView .card-action-btn.edit-btn,
+body.role-viewer #myBoardView .card-action-btn.delete-btn,
+body.role-viewer #myBoardView .card-action-btn.btn-card-edit,
+body.role-viewer #myBoardView .card-action-btn.btn-card-delete,
+body.role-viewer #myBoardView .card-action-btn[data-action="edit"],
+body.role-viewer #myBoardView .card-action-btn[data-action="delete"] {
+  display: inline-flex !important;
+}

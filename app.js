@@ -27,7 +27,9 @@
   let activeAlertCard = null;
 
   // V2 Domain & Search State
-  let currentDomain = 'board'; // 'board', 'documents', 'search'
+  let currentDomain = 'board'; // 'board', 'myboard', 'kanban', 'documents', 'search'
+  let myCards = []; // Private per-user board cards (/api/my-cards)
+  let editingIsPersonal = false;
   let searchScope = 'all'; // 'all', 'board', 'documents'
   let searchMode = 'all_terms'; // 'all_terms', 'exact'
   let searchResults = { items: [], total: 0, page: 1, limit: 10, totalPages: 1 };
@@ -422,11 +424,17 @@
     }
     // Refresh roster & My Tasks button visibility after session change
     loadTeamRoster();
+    const myBoardTab = document.getElementById('tabMyBoard');
+    if (myBoardTab) {
+      myBoardTab.style.display = (authEnabled && user) ? 'inline-flex' : 'none';
+    }
     if (user && isServerAvailable) {
       initRealtimeSync();
+      if (authEnabled) loadMyCards().then(() => renderMyBoard());
     } else if (!user && realtimeEventSource) {
       try { realtimeEventSource.close(); } catch (_) {}
       realtimeEventSource = null;
+      myCards = [];
     }
   }
 
@@ -874,6 +882,7 @@
   }
 
   function getDomainLabel(domain) {
+    if (domain === 'myboard') return 'My Board';
     if (domain === 'kanban') return 'Kanban Flow';
     if (domain === 'documents') return 'Dokumen Lokal';
     if (domain === 'search') return 'Hasil Pencarian';
@@ -948,6 +957,10 @@
       });
       realtimeEventSource.addEventListener('cards_updated', () => {
         syncCardsFromServer();
+      });
+      realtimeEventSource.addEventListener('my_cards_updated', async () => {
+        await loadMyCards();
+        renderMyBoard();
       });
       realtimeEventSource.addEventListener('schema_updated', async () => {
         if (!isUserInteractingWithBoard()) {
@@ -1094,6 +1107,65 @@
 
     if (!cards || !Array.isArray(cards)) cards = [];
     reminderService.setCards(cards);
+  }
+
+  async function loadMyCards() {
+    if (!isServerAvailable || !authEnabled || !currentUser) {
+      myCards = [];
+      return;
+    }
+    try {
+      const res = await fetch(apiUrl('/api/my-cards?_t=') + Date.now(), { cache: 'no-store' });
+      if (res.ok) {
+        const loaded = await res.json();
+        myCards = Array.isArray(loaded) ? loaded : [];
+      }
+    } catch (_) {}
+  }
+
+  async function saveMyCards() {
+    if (!isServerAvailable || !authEnabled || !currentUser) return;
+    try {
+      await fetch(apiUrl('/api/my-cards'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(myCards)
+      });
+    } catch (e) {
+      console.warn('Gagal menyimpan My Board:', e);
+    }
+  }
+
+  function renderMyBoard() {
+    const grid = document.getElementById('myBoardCardsGrid');
+    const emptyEl = document.getElementById('myBoardEmptyState');
+    const badgeEl = document.getElementById('myBoardBadge');
+    const totalBadgeEl = document.getElementById('myBoardTotalBadge');
+    if (!grid) return;
+
+    const active = myCards.filter(c => !c.archived);
+    if (badgeEl) {
+      badgeEl.textContent = active.length;
+      badgeEl.style.display = active.length > 0 ? 'inline-block' : 'none';
+    }
+    if (totalBadgeEl) totalBadgeEl.textContent = `${active.length} Catatan`;
+
+    grid.innerHTML = '';
+    if (active.length === 0) {
+      grid.style.display = 'none';
+      if (emptyEl) emptyEl.style.display = 'flex';
+      return;
+    }
+
+    grid.style.display = 'grid';
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    const sorted = [...active].sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0);
+    });
+    sorted.forEach(c => grid.appendChild(createCardElement(c)));
   }
 
   async function saveCards() {
@@ -1681,6 +1753,10 @@
     // Modals open/close
     document.getElementById('newCardBtn').addEventListener('click', () => openCardModal());
     document.getElementById('emptyActionBtn').addEventListener('click', () => openCardModal());
+    const newMyBoardBtn = document.getElementById('newMyBoardCardBtn');
+    const emptyMyBoardBtn = document.getElementById('emptyMyBoardActionBtn');
+    if (newMyBoardBtn) newMyBoardBtn.addEventListener('click', () => openCardModal(null, 'myboard'));
+    if (emptyMyBoardBtn) emptyMyBoardBtn.addEventListener('click', () => openCardModal(null, 'myboard'));
 
     // Global Ctrl+V Smart Pre-fill (opens Card Modal pre-populated from clipboard)
     document.addEventListener('paste', async (e) => {
@@ -2121,10 +2197,13 @@
     });
 
     // Toggle view panels
+    const myBoardView = document.getElementById('myBoardView');
     if (boardView) boardView.style.display = (domain === 'board') ? 'block' : 'none';
+    if (myBoardView) myBoardView.style.display = (domain === 'myboard') ? 'block' : 'none';
     if (kanbanView) kanbanView.style.display = (domain === 'kanban') ? 'block' : 'none';
     if (documentsView) documentsView.style.display = (domain === 'documents') ? 'block' : 'none';
     if (searchResultsView) searchResultsView.style.display = (domain === 'search') ? 'block' : 'none';
+    if (domain === 'myboard') renderMyBoard();
 
     // Toggle Work Board header controls (only visible on Notice Board)
     if (boardFilterTabs) boardFilterTabs.style.display = (domain === 'board') ? 'flex' : 'none';
@@ -3780,8 +3859,13 @@
     cardEl.querySelector('[data-action="pin"]').addEventListener('click', () => {
       card.pinned = !card.pinned;
       card.updatedAt = new Date().toISOString();
-      saveCards();
-      renderAll();
+      if (myCards.some(c => c.id === card.id)) {
+        saveMyCards();
+        renderMyBoard();
+      } else {
+        saveCards();
+        renderAll();
+      }
     });
 
     cardEl.querySelector('[data-action="copy"]').addEventListener('click', () => {
@@ -4101,6 +4185,15 @@
   }
 
   function archiveCard(id) {
+    const myCard = myCards.find(c => c.id === id);
+    if (myCard) {
+      if (!confirm(`Hapus catatan pribadi "${myCard.title || 'Tanpa Judul'}"?`)) return;
+      myCards = myCards.filter(c => c.id !== id);
+      saveMyCards();
+      renderMyBoard();
+      alertToast(`Catatan pribadi "${myCard.title || 'Tanpa Judul'}" dihapus.`);
+      return;
+    }
     const card = cards.find(c => c.id === id);
     if (!card) return;
     card.archived = true;
@@ -4244,7 +4337,12 @@
     renderMetadataFormFields(card ? card.metadata : {});
 
     // Target Board, Status & Date Range Setup
-    const isTask = card ? isKanbanTask(card) : (defaultTarget === 'kanban' || currentDomain === 'kanban');
+    editingIsPersonal = card ? myCards.some(c => c.id === card.id) : (defaultTarget === 'myboard' || currentDomain === 'myboard');
+    const targetBoardGroup = targetBoardNoticeBtn ? targetBoardNoticeBtn.closest('.form-group') : null;
+    if (targetBoardGroup) {
+      targetBoardGroup.style.display = editingIsPersonal ? 'none' : '';
+    }
+    const isTask = !editingIsPersonal && (card ? isKanbanTask(card) : (defaultTarget === 'kanban' || currentDomain === 'kanban'));
     if (isTask) {
       if (targetBoardKanbanBtn) targetBoardKanbanBtn.classList.add('active');
       if (targetBoardNoticeBtn) targetBoardNoticeBtn.classList.remove('active');
@@ -4574,6 +4672,25 @@
       assignees,
       updatedAt: new Date().toISOString()
     };
+
+    if (editingIsPersonal) {
+      if (isNew) {
+        cardPayload.createdAt = new Date().toISOString();
+        myCards.unshift(cardPayload);
+      } else {
+        const idx = myCards.findIndex(c => c.id === id);
+        if (idx !== -1) {
+          cardPayload.createdAt = myCards[idx].createdAt || cardPayload.updatedAt;
+          myCards[idx] = cardPayload;
+        } else {
+          myCards.unshift(cardPayload);
+        }
+      }
+      await saveMyCards();
+      closeCardModal();
+      renderMyBoard();
+      return;
+    }
 
     if (isNew) {
       cardPayload.createdAt = new Date().toISOString();

@@ -235,6 +235,20 @@ function createServerApp(options = {}) {
   const defaultVaultDir = options.vaultDir
     || process.env.VAULT_STORAGE_DIR
     || (process.platform === 'win32' && fs.existsSync('D:\\') ? 'D:\\WeKeepIt-Vault' : path.join(baseDir, 'vault-storage'));
+  const myBoardsDir = options.myBoardsDir
+    || process.env.MY_BOARDS_DIR
+    || path.join(path.dirname(path.resolve(dataFile)), 'my-boards');
+
+  function getUserBoardFile(username) {
+    const clean = String(username || 'local-owner').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!clean) throw new Error('Username tidak valid untuk My Board.');
+    const resolvedDir = path.resolve(myBoardsDir);
+    const target = path.resolve(resolvedDir, `${clean}.json`);
+    const prefix = resolvedDir.endsWith(path.sep) ? resolvedDir : resolvedDir + path.sep;
+    if (!target.startsWith(prefix)) throw new Error('Path My Board tidak valid.');
+    return target;
+  }
+
   const sseClients = new Map(); // res -> { username, displayName, role, view, editingTitle }
 
   function getActivePresenceList() {
@@ -261,6 +275,21 @@ function createServerApp(options = {}) {
         clientRes.write(frame);
       } catch {
         sseClients.delete(clientRes);
+      }
+    }
+  }
+
+  function broadcastToUser(username, eventName, payload = {}) {
+    if (sseClients.size === 0 || !username) return;
+    const clean = String(username).trim().toLowerCase();
+    const frame = `event: ${eventName}\ndata: ${JSON.stringify({ ...payload, ts: Date.now() })}\n\n`;
+    for (const [clientRes, info] of sseClients.entries()) {
+      if (info && info.username && info.username.toLowerCase() === clean) {
+        try {
+          clientRes.write(frame);
+        } catch {
+          sseClients.delete(clientRes);
+        }
       }
     }
   }
@@ -518,6 +547,39 @@ function createServerApp(options = {}) {
           authRequired: true
         });
         return;
+      }
+    }
+
+    // Private per-user My Board cards (any authenticated user may read/write their OWN board only)
+    if (pathname === '/api/my-cards') {
+      const ownerUsername = authUser ? authUser.username : 'local-owner';
+      if (req.method === 'GET') {
+        try {
+          const userFile = getUserBoardFile(ownerUsername);
+          const myCards = readJsonFile(userFile, []);
+          sendJson(res, 200, Array.isArray(myCards) ? myCards : []);
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+        }
+        return;
+      }
+
+      if (req.method === 'POST') {
+        try {
+          const myCards = await parseBody(req);
+          if (!Array.isArray(myCards)) {
+            sendJson(res, 400, { error: 'Payload harus berupa array kartu.' });
+            return;
+          }
+          const userFile = getUserBoardFile(ownerUsername);
+          writeJsonFile(userFile, myCards);
+          broadcastToUser(ownerUsername, 'my_cards_updated', { count: myCards.length });
+          sendJson(res, 200, { success: true, count: myCards.length });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
       }
     }
 
