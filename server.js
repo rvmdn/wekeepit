@@ -207,6 +207,68 @@ function parseBody(req, maxBytes = MAX_BODY_SIZE) {
   });
 }
 
+function remoteHttpRequest(targetUrl, options = {}) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+    } catch {
+      return reject(new Error('URL server tidak valid.'));
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return reject(new Error('Protokol server harus http:// atau https://.'));
+    }
+    const lib = parsed.protocol === 'https:' ? https : http;
+    const reqOpts = {
+      method: options.method || 'GET',
+      hostname: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      headers: { ...(options.headers || {}) },
+      timeout: options.timeoutMs || 15000
+    };
+    if (parsed.protocol === 'https:') {
+      reqOpts.rejectUnauthorized = !options.allowSelfSigned;
+    }
+
+    let bodyStr = null;
+    if (options.body !== undefined && options.body !== null) {
+      bodyStr = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+      if (!reqOpts.headers['Content-Type']) {
+        reqOpts.headers['Content-Type'] = 'application/json';
+      }
+      reqOpts.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    }
+
+    const r = lib.request(reqOpts, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        resolve({
+          statusCode: res.statusCode || 0,
+          headers: res.headers,
+          buffer,
+          json() {
+            try {
+              return JSON.parse(buffer.toString('utf8'));
+            } catch {
+              return null;
+            }
+          }
+        });
+      });
+    });
+    r.on('timeout', () => {
+      r.destroy();
+      reject(new Error('Koneksi ke server remote timeout.'));
+    });
+    r.on('error', reject);
+    if (bodyStr) r.write(bodyStr);
+    r.end();
+  });
+}
+
 function createServerApp(options = {}) {
   const isTest = process.env.NODE_ENV === 'test' ||
     process.env.TEST_MODE === '1' ||
@@ -1734,6 +1796,319 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
         } catch (err) {
           const status = err.statusCode || 400;
           sendJson(res, status, { error: err.message });
+          return;
+        }
+      }
+    }
+
+    // --- Selective Server -> Local Sync Endpoints ---
+    if (pathname === '/api/sync/preview' || pathname === '/api/sync/pull') {
+      if (req.method === 'POST') {
+        if (authManager.isAuthEnabled() && (!authUser || !authManager.can(authUser, PERMISSIONS.WRITE_CARDS))) {
+          sendJson(res, 403, { error: '403 Forbidden: Peran Anda tidak memiliki izin melakukan sinkronisasi data.' });
+          return;
+        }
+        try {
+          const payload = await parseBody(req);
+          const rawUrl = typeof payload.serverUrl === 'string' ? payload.serverUrl.trim() : '';
+          if (!rawUrl) {
+            sendJson(res, 400, { error: 'URL server tujuan wajib diisi.' });
+            return;
+          }
+          const baseUrl = rawUrl.replace(/\/+$/, '');
+          const allowSelfSigned = Boolean(payload.allowSelfSigned);
+          const remoteUsername = typeof payload.username === 'string' ? payload.username.trim() : '';
+          const remotePassword = typeof payload.password === 'string' ? payload.password : '';
+
+          const remoteHeaders = {};
+          if (remoteUsername || remotePassword) {
+            const loginRes = await remoteHttpRequest(`${baseUrl}/api/auth/login`, {
+              method: 'POST',
+              body: { username: remoteUsername, password: remotePassword },
+              allowSelfSigned
+            });
+            const loginJson = loginRes.json();
+            if (loginRes.statusCode !== 200 || !loginJson || !loginJson.token) {
+              const errMsg = (loginJson && loginJson.error) ? loginJson.error : `Gagal login ke server remote (HTTP ${loginRes.statusCode}).`;
+              sendJson(res, loginRes.statusCode === 429 ? 429 : 401, { error: errMsg });
+              return;
+            }
+            remoteHeaders['Authorization'] = `Bearer ${loginJson.token}`;
+          }
+
+          if (pathname === '/api/sync/preview') {
+            const cardsRes = await remoteHttpRequest(`${baseUrl}/api/cards`, { headers: remoteHeaders, allowSelfSigned });
+            if (cardsRes.statusCode === 401 || cardsRes.statusCode === 403) {
+              sendJson(res, 401, { error: 'Server remote memerlukan login (username & password).' });
+              return;
+            }
+            if (cardsRes.statusCode !== 200) {
+              sendJson(res, 502, { error: `Gagal mengambil data kartu dari server (HTTP ${cardsRes.statusCode}).` });
+              return;
+            }
+            const remoteCards = Array.isArray(cardsRes.json()) ? cardsRes.json() : [];
+
+            let remoteMyCards = [];
+            try {
+              const myRes = await remoteHttpRequest(`${baseUrl}/api/my-cards`, { headers: remoteHeaders, allowSelfSigned });
+              if (myRes.statusCode === 200 && Array.isArray(myRes.json())) {
+                remoteMyCards = myRes.json();
+              }
+            } catch (_) {}
+
+            // Recursively collect vault files across subfolders (depth <= 6)
+            const vaultFiles = [];
+            const walkVault = async (subPath, depth) => {
+              if (depth > 6) return;
+              const qs = subPath ? `?subPath=${encodeURIComponent(subPath)}` : '';
+              const listRes = await remoteHttpRequest(`${baseUrl}/api/vault/list${qs}`, { headers: remoteHeaders, allowSelfSigned });
+              if (listRes.statusCode !== 200) return;
+              const listData = listRes.json();
+              if (!listData) return;
+              const files = Array.isArray(listData.files) ? listData.files : [];
+              for (const f of files) {
+                vaultFiles.push({
+                  id: f.id || null,
+                  fileName: f.file_name,
+                  subPath: subPath || '',
+                  size: Number(f.size) || 0,
+                  extension: f.extension || ''
+                });
+              }
+              const folders = Array.isArray(listData.folders) ? listData.folders : [];
+              for (const folder of folders) {
+                if (folder && folder.subPath) {
+                  await walkVault(folder.subPath, depth + 1);
+                }
+              }
+            };
+            try {
+              await walkVault('', 0);
+            } catch (_) {}
+
+            const cardSummaries = remoteCards.map(c => ({
+              id: c.id,
+              title: c.title || '(Tanpa Judul)',
+              isKanban: Boolean(c.status),
+              status: c.status || '',
+              archived: Boolean(c.archived),
+              updatedAt: c.updatedAt || c.createdAt || '',
+              size: Buffer.byteLength(JSON.stringify(c), 'utf8')
+            }));
+            const myCardSummaries = remoteMyCards.map(c => ({
+              id: c.id,
+              title: c.title || '(Tanpa Judul)',
+              archived: Boolean(c.archived),
+              updatedAt: c.updatedAt || c.createdAt || '',
+              size: Buffer.byteLength(JSON.stringify(c), 'utf8')
+            }));
+
+            sendJson(res, 200, {
+              success: true,
+              cards: cardSummaries,
+              myCards: myCardSummaries,
+              vaultFiles
+            });
+            return;
+          }
+
+          // POST /api/sync/pull
+          const selectedCardIds = new Set(Array.isArray(payload.selectedCardIds) ? payload.selectedCardIds.map(String) : []);
+          const selectedMyCardIds = new Set(Array.isArray(payload.selectedMyCardIds) ? payload.selectedMyCardIds.map(String) : []);
+          const selectedVaultFiles = Array.isArray(payload.selectedVaultFiles) ? payload.selectedVaultFiles : [];
+
+          let syncedCards = 0;
+          let syncedMyCards = 0;
+          let syncedVaultFiles = 0;
+          let syncedImages = 0;
+          let totalBytes = 0;
+          const failedFiles = [];
+          const referencedImages = new Set();
+
+          const collectImages = (card) => {
+            if (card && Array.isArray(card.images)) {
+              for (const img of card.images) {
+                if (typeof img === 'string' && img.trim()) referencedImages.add(img.trim());
+              }
+            }
+          };
+
+          if (selectedCardIds.size > 0) {
+            const cardsRes = await remoteHttpRequest(`${baseUrl}/api/cards`, { headers: remoteHeaders, allowSelfSigned });
+            if (cardsRes.statusCode !== 200) {
+              sendJson(res, 502, { error: `Gagal mengunduh kartu dari server (HTTP ${cardsRes.statusCode}).` });
+              return;
+            }
+            const remoteCards = Array.isArray(cardsRes.json()) ? cardsRes.json() : [];
+            const localCards = readJsonFile(dataFile, []);
+            const mergedMap = new Map();
+            if (Array.isArray(localCards)) {
+              for (const lc of localCards) {
+                if (lc && lc.id) mergedMap.set(String(lc.id), lc);
+              }
+            }
+            for (const rc of remoteCards) {
+              if (rc && rc.id && selectedCardIds.has(String(rc.id))) {
+                mergedMap.set(String(rc.id), rc);
+                collectImages(rc);
+                syncedCards++;
+                totalBytes += Buffer.byteLength(JSON.stringify(rc), 'utf8');
+              }
+            }
+            writeJsonFile(dataFile, Array.from(mergedMap.values()));
+            broadcastEvent('cards_updated', { by: authUser ? authUser.username : 'sync', count: syncedCards });
+          }
+
+          if (selectedMyCardIds.size > 0) {
+            const myRes = await remoteHttpRequest(`${baseUrl}/api/my-cards`, { headers: remoteHeaders, allowSelfSigned });
+            if (myRes.statusCode === 200 && Array.isArray(myRes.json())) {
+              const remoteMyCards = myRes.json();
+              const ownerUsername = authUser ? authUser.username : 'local-owner';
+              const userFile = getUserBoardFile(ownerUsername);
+              const localMyCards = readJsonFile(userFile, []);
+              const myMap = new Map();
+              if (Array.isArray(localMyCards)) {
+                for (const lc of localMyCards) {
+                  if (lc && lc.id) myMap.set(String(lc.id), lc);
+                }
+              }
+              for (const rc of remoteMyCards) {
+                if (rc && rc.id && selectedMyCardIds.has(String(rc.id))) {
+                  myMap.set(String(rc.id), rc);
+                  collectImages(rc);
+                  syncedMyCards++;
+                  totalBytes += Buffer.byteLength(JSON.stringify(rc), 'utf8');
+                }
+              }
+              writeJsonFile(userFile, Array.from(myMap.values()));
+              broadcastToUser(ownerUsername, 'my_cards_updated', { count: myMap.size });
+            }
+          }
+
+          // Download referenced card images into vaultImagesDir
+          if (referencedImages.size > 0) {
+            if (!fs.existsSync(vaultImagesDir)) {
+              fs.mkdirSync(vaultImagesDir, { recursive: true });
+            }
+            const resolvedImgDir = fs.realpathSync(vaultImagesDir);
+            const imgPrefix = resolvedImgDir.endsWith(path.sep) ? resolvedImgDir : resolvedImgDir + path.sep;
+            for (const rawImg of referencedImages) {
+              const safeImg = path.basename(rawImg).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+              const ext = path.extname(safeImg).toLowerCase();
+              if (!safeImg || !ALLOWED_IMAGE_EXTENSIONS.has(ext)) continue;
+              const destImg = path.resolve(resolvedImgDir, safeImg);
+              if (!destImg.startsWith(imgPrefix)) continue;
+              if (fs.existsSync(destImg)) continue;
+              try {
+                const imgRes = await remoteHttpRequest(`${baseUrl}/api/vault/image?name=${encodeURIComponent(safeImg)}`, {
+                  headers: remoteHeaders,
+                  allowSelfSigned
+                });
+                if (imgRes.statusCode === 200 && imgRes.buffer && imgRes.buffer.length > 0) {
+                  const tmpImg = destImg + '.tmp';
+                  fs.writeFileSync(tmpImg, imgRes.buffer);
+                  fs.renameSync(tmpImg, destImg);
+                  syncedImages++;
+                  totalBytes += imgRes.buffer.length;
+                }
+              } catch (_) {}
+            }
+          }
+
+          // Download selected Vault documents into local defaultVaultDir + reindex
+          if (selectedVaultFiles.length > 0) {
+            if (!fs.existsSync(defaultVaultDir)) {
+              fs.mkdirSync(defaultVaultDir, { recursive: true });
+            }
+            const resolvedVault = fs.realpathSync(defaultVaultDir);
+            const existingFolder = folderManager.listFolders().find(f => {
+              try {
+                return path.resolve(f.path).toLowerCase() === resolvedVault.toLowerCase();
+              } catch {
+                return false;
+              }
+            });
+            const targetFolder = existingFolder || await folderManager.addFolder(resolvedVault, { name: 'WeKeepIt Vault (Server)' });
+            const vaultPrefix = resolvedVault.endsWith(path.sep) ? resolvedVault : resolvedVault + path.sep;
+
+            for (const vf of selectedVaultFiles) {
+              if (!vf || !vf.id || !vf.fileName) {
+                failedFiles.push({ fileName: (vf && vf.fileName) || 'unknown', reason: 'ID dokumen tidak tersedia di server' });
+                continue;
+              }
+              const safeName = path.basename(String(vf.fileName)).replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
+              const ext = path.extname(safeName).toLowerCase();
+              if (!safeName || !ALLOWED_DOC_EXTENSIONS.has(ext)) {
+                failedFiles.push({ fileName: safeName || 'unknown', reason: 'Ekstensi berkas tidak didukung' });
+                continue;
+              }
+
+              let targetDir = resolvedVault;
+              if (typeof vf.subPath === 'string' && vf.subPath.trim()) {
+                const relParts = vf.subPath.split(/[/\\]+/).map(s => s.trim()).filter(Boolean);
+                let invalidSeg = false;
+                for (const seg of relParts) {
+                  if (seg === '.' || seg === '..' || /[<>:"/\\|?*\x00-\x1f]/.test(seg)) {
+                    invalidSeg = true;
+                    break;
+                  }
+                }
+                if (invalidSeg) {
+                  failedFiles.push({ fileName: safeName, reason: 'Subfolder tidak valid' });
+                  continue;
+                }
+                targetDir = path.resolve(resolvedVault, ...relParts);
+                if (targetDir !== resolvedVault && !targetDir.startsWith(vaultPrefix)) {
+                  failedFiles.push({ fileName: safeName, reason: 'Path subfolder di luar Vault' });
+                  continue;
+                }
+                if (!fs.existsSync(targetDir)) {
+                  fs.mkdirSync(targetDir, { recursive: true });
+                }
+              }
+
+              const destPath = path.resolve(targetDir, safeName);
+              if (!destPath.startsWith(vaultPrefix)) {
+                failedFiles.push({ fileName: safeName, reason: 'Path berkas di luar Vault' });
+                continue;
+              }
+
+              try {
+                const dlRes = await remoteHttpRequest(`${baseUrl}/api/vault/download?id=${encodeURIComponent(vf.id)}`, {
+                  headers: remoteHeaders,
+                  allowSelfSigned,
+                  timeoutMs: 60000
+                });
+                if (dlRes.statusCode !== 200 || !dlRes.buffer) {
+                  failedFiles.push({ fileName: safeName, reason: `HTTP ${dlRes.statusCode}` });
+                  continue;
+                }
+                const tmpPath = destPath + '.tmp';
+                fs.writeFileSync(tmpPath, dlRes.buffer);
+                fs.renameSync(tmpPath, destPath);
+                syncedVaultFiles++;
+                totalBytes += dlRes.buffer.length;
+              } catch (dlErr) {
+                failedFiles.push({ fileName: safeName, reason: dlErr.message });
+              }
+            }
+
+            await documentIndexer.reindexFolder(targetFolder.id);
+            broadcastEvent('vault_updated', { by: authUser ? authUser.username : 'sync', count: syncedVaultFiles });
+          }
+
+          sendJson(res, 200, {
+            success: true,
+            syncedCards,
+            syncedMyCards,
+            syncedVaultFiles,
+            syncedImages,
+            totalBytes,
+            failedFiles
+          });
+          return;
+        } catch (err) {
+          sendJson(res, err.statusCode || 400, { error: err.message });
           return;
         }
       }

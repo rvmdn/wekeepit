@@ -315,4 +315,120 @@ test('Server Adaptive Auth & RBAC Integration Tests', async (t) => {
       await app.close();
     }
   });
+
+  await t.test('Selective Server -> Local Sync (/api/sync/preview and /api/sync/pull)', async () => {
+    const remoteDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-sync-remote-'));
+    const localDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wekeepit-sync-local-'));
+
+    const remoteApp = createServerApp({
+      dbPath: ':memory:',
+      authEnabled: true,
+      usersFile: path.join(remoteDir, 'users.json'),
+      dataFile: path.join(remoteDir, 'cards.json'),
+      schemaFile: path.join(remoteDir, 'schema.json'),
+      vaultDir: path.join(remoteDir, 'vault'),
+      myBoardsDir: path.join(remoteDir, 'my-boards')
+    });
+    const localApp = createServerApp({
+      dbPath: ':memory:',
+      authEnabled: false,
+      usersFile: path.join(localDir, 'users.json'),
+      dataFile: path.join(localDir, 'cards.json'),
+      schemaFile: path.join(localDir, 'schema.json'),
+      vaultDir: path.join(localDir, 'vault'),
+      myBoardsDir: path.join(localDir, 'my-boards')
+    });
+
+    try {
+      await new Promise(resolve => remoteApp.server.listen(0, '127.0.0.1', resolve));
+      await new Promise(resolve => localApp.server.listen(0, '127.0.0.1', resolve));
+      const remoteUrl = `http://127.0.0.1:${remoteApp.server.address().port}`;
+
+      // Login as default remote admin
+      const loginRes = await makeRequest(remoteApp.server, { path: '/api/auth/login', method: 'POST' }, {
+        username: 'admin',
+        password: 'admin123'
+      });
+      assert.strictEqual(loginRes.statusCode, 200);
+      const remoteToken = loginRes.json.token;
+
+      await makeRequest(remoteApp.server, {
+        path: '/api/cards',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${remoteToken}` }
+      }, [
+        { id: 'r-card-1', title: 'Remote Card One', content: 'Keep me' },
+        { id: 'r-card-2', title: 'Remote Card Two', content: 'Skip me' }
+      ]);
+
+      await makeRequest(remoteApp.server, {
+        path: '/api/my-cards',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${remoteToken}` }
+      }, [
+        { id: 'r-my-1', title: 'Remote Private Note', content: 'Secret' }
+      ]);
+
+      const sampleMd = Buffer.from('# Panduan Sync\nIsi dokumen untuk sinkronisasi.', 'utf8').toString('base64');
+      const upRes = await makeRequest(remoteApp.server, {
+        path: '/api/vault/upload',
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${remoteToken}` }
+      }, { fileName: 'Panduan-Sync.md', contentBase64: sampleMd });
+      assert.strictEqual(upRes.statusCode, 201);
+
+      // Seed local with an existing card that must NOT be overwritten
+      await makeRequest(localApp.server, { path: '/api/cards', method: 'POST' }, [
+        { id: 'local-only-1', title: 'Local Existing Card', content: 'Stay safe' }
+      ]);
+
+      // 1. Preview from local server
+      const previewRes = await makeRequest(localApp.server, { path: '/api/sync/preview', method: 'POST' }, {
+        serverUrl: remoteUrl,
+        username: 'admin',
+        password: 'admin123',
+        allowSelfSigned: false
+      });
+      assert.strictEqual(previewRes.statusCode, 200);
+      assert.strictEqual(previewRes.json.cards.length, 2);
+      assert.strictEqual(previewRes.json.myCards.length, 1);
+      assert.strictEqual(previewRes.json.vaultFiles.length, 1);
+      assert.ok(previewRes.json.vaultFiles[0].size > 0);
+      assert.ok(previewRes.json.vaultFiles[0].id);
+
+      // 2. Pull only r-card-1, r-my-1, and the vault file
+      const pullRes = await makeRequest(localApp.server, { path: '/api/sync/pull', method: 'POST' }, {
+        serverUrl: remoteUrl,
+        username: 'admin',
+        password: 'admin123',
+        allowSelfSigned: false,
+        selectedCardIds: ['r-card-1'],
+        selectedMyCardIds: ['r-my-1'],
+        selectedVaultFiles: [{
+          id: previewRes.json.vaultFiles[0].id,
+          fileName: previewRes.json.vaultFiles[0].fileName,
+          subPath: previewRes.json.vaultFiles[0].subPath
+        }]
+      });
+      assert.strictEqual(pullRes.statusCode, 200);
+      assert.strictEqual(pullRes.json.syncedCards, 1);
+      assert.strictEqual(pullRes.json.syncedMyCards, 1);
+      assert.strictEqual(pullRes.json.syncedVaultFiles, 1);
+
+      // Verify local cards merged cleanly
+      const localCardsAfter = await makeRequest(localApp.server, { path: '/api/cards' });
+      assert.strictEqual(localCardsAfter.json.length, 2);
+      assert.ok(localCardsAfter.json.some(c => c.id === 'local-only-1'));
+      assert.ok(localCardsAfter.json.some(c => c.id === 'r-card-1'));
+      assert.ok(!localCardsAfter.json.some(c => c.id === 'r-card-2'));
+
+      // Verify vault file exists on local disk
+      assert.ok(fs.existsSync(path.join(localDir, 'vault', 'Panduan-Sync.md')));
+    } finally {
+      await remoteApp.close();
+      await localApp.close();
+      fs.rmSync(remoteDir, { recursive: true, force: true });
+      fs.rmSync(localDir, { recursive: true, force: true });
+    }
+  });
 });

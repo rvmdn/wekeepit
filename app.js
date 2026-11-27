@@ -2097,6 +2097,236 @@
     });
     document.getElementById('importFileInput').addEventListener('change', importDataJson);
 
+    // Selective Server -> Local Sync
+    const syncPreviewBtn = document.getElementById('syncPreviewBtn');
+    const syncPullBtn = document.getElementById('syncPullBtn');
+    const syncSelectAllBtn = document.getElementById('syncSelectAllBtn');
+    const syncDeselectAllBtn = document.getElementById('syncDeselectAllBtn');
+    const syncStatusMsg = document.getElementById('syncStatusMsg');
+    const syncPreviewContainer = document.getElementById('syncPreviewContainer');
+    const syncListContainer = document.getElementById('syncListContainer');
+    const syncSelectionSummary = document.getElementById('syncSelectionSummary');
+    let lastSyncPreviewData = null;
+
+    function formatSyncBytes(bytes) {
+      const n = Number(bytes) || 0;
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function updateSyncSummary() {
+      if (!syncListContainer || !syncSelectionSummary) return;
+      const checked = Array.from(syncListContainer.querySelectorAll('input.sync-item-cb:checked'));
+      let totalBytes = 0;
+      for (const cb of checked) {
+        totalBytes += Number(cb.getAttribute('data-size')) || 0;
+      }
+      syncSelectionSummary.textContent = `Terpilih: ${checked.length} item (${formatSyncBytes(totalBytes)})`;
+    }
+
+    function renderSyncPreviewList(data) {
+      if (!syncListContainer || !syncPreviewContainer) return;
+      const cardsList = Array.isArray(data.cards) ? data.cards : [];
+      const myCardsList = Array.isArray(data.myCards) ? data.myCards : [];
+      const vaultList = Array.isArray(data.vaultFiles) ? data.vaultFiles : [];
+
+      if (cardsList.length === 0 && myCardsList.length === 0 && vaultList.length === 0) {
+        syncListContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted); padding:8px;">Tidak ada data yang ditemukan di server.</div>';
+        syncPreviewContainer.style.display = 'block';
+        updateSyncSummary();
+        return;
+      }
+
+      const renderGroup = (title, itemsHtml) => `
+        <div class="sync-group">
+          <div class="sync-group-header"><span>${title}</span></div>
+          ${itemsHtml}
+        </div>
+      `;
+
+      let html = '';
+      if (vaultList.length > 0) {
+        const rows = vaultList.map((vf, idx) => {
+          const label = vf.subPath ? `${vf.subPath}/${vf.fileName}` : vf.fileName;
+          const disabledAttr = vf.id ? '' : 'disabled title="Belum terindeks di server"';
+          return `
+            <label class="sync-item-row">
+              <span class="sync-item-left">
+                <input type="checkbox" class="sync-item-cb" data-kind="vault" data-idx="${idx}" data-size="${vf.size || 0}" ${vf.id ? 'checked' : ''} ${disabledAttr}>
+                <span class="sync-item-title" title="${escapeHtml(label)}">📄 ${escapeHtml(label)}</span>
+              </span>
+              <span class="sync-item-size">${formatSyncBytes(vf.size)}</span>
+            </label>
+          `;
+        }).join('');
+        html += renderGroup(`📁 Berkas Dokumen Vault (${vaultList.length})`, rows);
+      }
+
+      if (cardsList.length > 0) {
+        const rows = cardsList.map(c => {
+          const prefix = c.isKanban ? '📋' : '📌';
+          return `
+            <label class="sync-item-row">
+              <span class="sync-item-left">
+                <input type="checkbox" class="sync-item-cb" data-kind="card" data-id="${escapeHtml(c.id)}" data-size="${c.size || 0}" checked>
+                <span class="sync-item-title" title="${escapeHtml(c.title)}">${prefix} ${escapeHtml(c.title)}</span>
+              </span>
+              <span class="sync-item-size">${formatSyncBytes(c.size)}</span>
+            </label>
+          `;
+        }).join('');
+        html += renderGroup(`📌 Notice Board & Kanban (${cardsList.length})`, rows);
+      }
+
+      if (myCardsList.length > 0) {
+        const rows = myCardsList.map(c => `
+          <label class="sync-item-row">
+            <span class="sync-item-left">
+              <input type="checkbox" class="sync-item-cb" data-kind="mycard" data-id="${escapeHtml(c.id)}" data-size="${c.size || 0}" checked>
+              <span class="sync-item-title" title="${escapeHtml(c.title)}">🔒 ${escapeHtml(c.title)}</span>
+            </span>
+            <span class="sync-item-size">${formatSyncBytes(c.size)}</span>
+          </label>
+        `).join('');
+        html += renderGroup(`🔒 My Board (${myCardsList.length})`, rows);
+      }
+
+      syncListContainer.innerHTML = html;
+      syncListContainer.querySelectorAll('input.sync-item-cb').forEach(cb => {
+        cb.addEventListener('change', updateSyncSummary);
+      });
+      syncPreviewContainer.style.display = 'block';
+      updateSyncSummary();
+    }
+
+    if (syncPreviewBtn) {
+      syncPreviewBtn.addEventListener('click', async () => {
+        const serverUrl = (document.getElementById('syncServerUrl')?.value || '').trim();
+        const username = (document.getElementById('syncUsername')?.value || '').trim();
+        const password = document.getElementById('syncPassword')?.value || '';
+        const allowSelfSigned = Boolean(document.getElementById('syncAllowSelfSigned')?.checked);
+        if (!serverUrl) {
+          showToast('Masukkan URL server terlebih dahulu.', 'error');
+          return;
+        }
+        syncPreviewBtn.disabled = true;
+        syncPreviewBtn.textContent = 'Memuat...';
+        if (syncStatusMsg) {
+          syncStatusMsg.style.display = 'block';
+          syncStatusMsg.innerHTML = '<span style="color: var(--accent-color);">⏳ Menghubungi server...</span>';
+        }
+        try {
+          const res = await fetch(apiUrl('/api/sync/preview'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ serverUrl, username, password, allowSelfSigned })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+          lastSyncPreviewData = data;
+          renderSyncPreviewList(data);
+          if (syncStatusMsg) {
+            syncStatusMsg.innerHTML = '<span style="color: var(--success-color, #22c55e);">✅ Daftar item berhasil dimuat. Pilih item yang ingin dipindahkan.</span>';
+          }
+        } catch (err) {
+          if (syncStatusMsg) {
+            syncStatusMsg.innerHTML = `<span style="color: var(--danger-color, #ef4444);">❌ ${escapeHtml(err.message)}</span>`;
+          }
+        } finally {
+          syncPreviewBtn.disabled = false;
+          syncPreviewBtn.textContent = '🔍 Muat Daftar Server';
+        }
+      });
+    }
+
+    if (syncSelectAllBtn) {
+      syncSelectAllBtn.addEventListener('click', () => {
+        if (!syncListContainer) return;
+        syncListContainer.querySelectorAll('input.sync-item-cb:not(:disabled)').forEach(cb => { cb.checked = true; });
+        updateSyncSummary();
+      });
+    }
+
+    if (syncDeselectAllBtn) {
+      syncDeselectAllBtn.addEventListener('click', () => {
+        if (!syncListContainer) return;
+        syncListContainer.querySelectorAll('input.sync-item-cb:not(:disabled)').forEach(cb => { cb.checked = false; });
+        updateSyncSummary();
+      });
+    }
+
+    if (syncPullBtn) {
+      syncPullBtn.addEventListener('click', async () => {
+        if (!lastSyncPreviewData || !syncListContainer) return;
+        const serverUrl = (document.getElementById('syncServerUrl')?.value || '').trim();
+        const username = (document.getElementById('syncUsername')?.value || '').trim();
+        const password = document.getElementById('syncPassword')?.value || '';
+        const allowSelfSigned = Boolean(document.getElementById('syncAllowSelfSigned')?.checked);
+
+        const selectedCardIds = [];
+        const selectedMyCardIds = [];
+        const selectedVaultFiles = [];
+        syncListContainer.querySelectorAll('input.sync-item-cb:checked').forEach(cb => {
+          const kind = cb.getAttribute('data-kind');
+          if (kind === 'card') selectedCardIds.push(cb.getAttribute('data-id'));
+          else if (kind === 'mycard') selectedMyCardIds.push(cb.getAttribute('data-id'));
+          else if (kind === 'vault') {
+            const idx = Number(cb.getAttribute('data-idx'));
+            const vf = lastSyncPreviewData.vaultFiles && lastSyncPreviewData.vaultFiles[idx];
+            if (vf) selectedVaultFiles.push({ id: vf.id, fileName: vf.fileName, subPath: vf.subPath });
+          }
+        });
+
+        if (selectedCardIds.length === 0 && selectedMyCardIds.length === 0 && selectedVaultFiles.length === 0) {
+          showToast('Pilih minimal 1 item untuk disinkronkan.', 'error');
+          return;
+        }
+
+        syncPullBtn.disabled = true;
+        syncPullBtn.textContent = '⏳ Menyinkronkan...';
+        try {
+          const res = await fetch(apiUrl('/api/sync/pull'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              serverUrl,
+              username,
+              password,
+              allowSelfSigned,
+              selectedCardIds,
+              selectedMyCardIds,
+              selectedVaultFiles
+            })
+          });
+          const result = await res.json();
+          if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
+
+          await loadCards();
+          await loadMyCards();
+          await loadFoldersAndDocuments();
+          renderAll();
+          renderMyBoard();
+
+          const msg = `Sinkronisasi selesai: ${result.syncedCards} kartu, ${result.syncedMyCards} My Board, ${result.syncedVaultFiles} berkas Vault (${formatSyncBytes(result.totalBytes)}).`;
+          if (syncStatusMsg) {
+            syncStatusMsg.style.display = 'block';
+            syncStatusMsg.innerHTML = `<span style="color: var(--success-color, #22c55e);">✅ ${escapeHtml(msg)}</span>`;
+          }
+          showToast(msg, 'success');
+        } catch (err) {
+          if (syncStatusMsg) {
+            syncStatusMsg.style.display = 'block';
+            syncStatusMsg.innerHTML = `<span style="color: var(--danger-color, #ef4444);">❌ ${escapeHtml(err.message)}</span>`;
+          }
+          showToast(`Gagal sinkronisasi: ${err.message}`, 'error');
+        } finally {
+          syncPullBtn.disabled = false;
+          syncPullBtn.textContent = '⬇️ Sinkronkan Item Terpilih ke Lokal';
+        }
+      });
+    }
+
     // GitHub Release Update Checker
     const checkUpdateBtn = document.getElementById('checkUpdateBtn');
     const updateCheckStatus = document.getElementById('updateCheckStatus');
@@ -4865,6 +5095,26 @@
     const assigneeRow = document.getElementById('formAssigneeRow');
     if (assigneeRow) {
       assigneeRow.style.display = (isTask && isServerAvailable && teamRoster.length > 1) ? 'block' : 'none';
+    }
+
+    const moveToMyBoardBtn = document.getElementById('moveToMyBoardBtn');
+    if (moveToMyBoardBtn) {
+      moveToMyBoardBtn.style.display = (card && authEnabled && currentUser && !editingIsPersonal) ? 'inline-flex' : 'none';
+      moveToMyBoardBtn.onclick = async () => {
+        if (!card || !authEnabled || !currentUser || editingIsPersonal) return;
+        const movedCard = JSON.parse(JSON.stringify(card));
+        delete movedCard.status;
+        delete movedCard.assignees;
+        movedCard.updatedAt = new Date().toISOString();
+        myCards.unshift(movedCard);
+        await saveMyCards();
+        cards = cards.filter(c => c.id !== card.id);
+        await deleteSingleCardFromServer(card.id);
+        hideModalOverlay(cardModal);
+        renderAll();
+        renderMyBoard();
+        showToast(`"${card.title || 'Catatan'}" dipindahkan ke 🔒 My Board.`, 'success');
+      };
     }
 
     showModalOverlay(cardModal);
