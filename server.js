@@ -519,6 +519,13 @@ function createServerApp(options = {}) {
         try {
           const body = await parseBody(req);
           const updated = authManager.updateUser(targetUsername, body);
+          for (const info of sseClients.values()) {
+            if (info.username === updated.username) {
+              info.role = updated.role;
+              info.displayName = updated.displayName;
+            }
+          }
+          broadcastEvent('presence_updated', { users: getActivePresenceList() });
           sendJson(res, 200, { success: true, user: updated });
           return;
         } catch (err) {

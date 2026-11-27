@@ -569,22 +569,37 @@
             <tr>
               <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(u.username)}</td>
               <td>${escapeHtml(u.displayName || '-')}</td>
-              <td><span class="auth-role-badge ${roleClass}">${roleLabel}</span></td>
+              <td>
+                ${isSelf ? `<span class="auth-role-badge ${roleClass}">${roleLabel}</span>` : `
+                  <select class="form-select user-role-select" data-username="${escapeHtml(u.username)}" style="padding: 3px 8px; font-size: 0.76rem; min-width: 115px;">
+                    <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>👑 Admin</option>
+                    <option value="editor" ${u.role === 'editor' ? 'selected' : ''}>✏️ Editor</option>
+                    <option value="viewer" ${u.role === 'viewer' ? 'selected' : ''}>👁️ Viewer</option>
+                  </select>
+                `}
+              </td>
               <td style="text-align: center;">
-                <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;">
-                  <button type="button" class="btn btn-sm btn-secondary btn-change-password" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem;" title="Ubah password akun ini">
-                    🔑 Password
-                  </button>
-                  ${isSelf ? '<span style="font-size: 0.74rem; color: var(--text-muted);">(Akun Anda)</span>' : `
+                ${isSelf ? '<span style="font-size: 0.74rem; color: var(--text-muted);">(Akun Anda — edit di Profil)</span>' : `
+                  <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;">
+                    <button type="button" class="btn btn-sm btn-secondary btn-change-password" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem;" title="Reset password jika pengguna lupa">
+                      🔑 Reset
+                    </button>
                     <button type="button" class="btn btn-sm btn-secondary btn-delete-user" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem; color: #ef4444;" title="Hapus akun pengguna">
                       🗑️ Hapus
                     </button>
-                  `}
-                </div>
+                  </div>
+                `}
               </td>
             </tr>
           `;
         }).join('');
+
+        tbody.querySelectorAll('.user-role-select').forEach(sel => {
+          sel.addEventListener('change', () => {
+            const username = sel.getAttribute('data-username');
+            handleChangeUserRole(username, sel.value);
+          });
+        });
 
         tbody.querySelectorAll('.btn-change-password').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -663,6 +678,29 @@
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<span>Simpan Pengguna</span>';
       }
+    }
+  }
+
+  async function handleChangeUserRole(username, newRole) {
+    if (!username || !newRole) return;
+    try {
+      const res = await fetch(apiUrl('/api/auth/users/' + encodeURIComponent(username)), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ role: newRole })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alertToast(`Peran '${username}' diubah menjadi ${newRole.toUpperCase()}.`);
+        await loadUserList();
+        await loadTeamRoster();
+      } else {
+        alert(data.error || 'Gagal mengubah peran pengguna.');
+        await loadUserList();
+      }
+    } catch (e) {
+      alert('Terjadi kesalahan saat mengubah peran: ' + e.message);
+      await loadUserList();
     }
   }
 

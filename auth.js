@@ -233,6 +233,12 @@ class AuthManager {
       if (!validRoles.includes(updates.role)) {
         throw new Error(`Role tidak valid. Pilihan: ${validRoles.join(', ')}`);
       }
+      if (user.role === ROLES.ADMIN && updates.role !== ROLES.ADMIN) {
+        const otherAdmins = users.filter(u => u.username.toLowerCase() !== cleanUser && u.role === ROLES.ADMIN);
+        if (otherAdmins.length === 0) {
+          throw new Error('Tidak dapat menurunkan peran satu-satunya akun Admin yang tersisa.');
+        }
+      }
       user.role = updates.role;
     }
 
@@ -241,6 +247,19 @@ class AuthManager {
     }
 
     this.saveUsers(users);
+
+    // Sync active sessions (or revoke if password was reset by Admin)
+    for (const [token, session] of this.sessions.entries()) {
+      if (session.username.toLowerCase() === cleanUser) {
+        if (updates.password) {
+          this.sessions.delete(token);
+        } else {
+          session.role = user.role;
+          session.displayName = user.displayName;
+        }
+      }
+    }
+
     return {
       username: user.username,
       role: user.role,
