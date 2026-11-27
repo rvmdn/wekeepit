@@ -2,6 +2,8 @@
 wekeepit-data.json
 users.json
 wekeepit-index.db*
+my-boards/
+backups/
 *.bak
 *.tmp
 *.pfx

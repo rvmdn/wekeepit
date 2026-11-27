@@ -34,4 +34,5 @@ goto start_server
 :start_server
 echo.
 node server.js
+if "%WEKEEPIT_NO_PAUSE%"=="1" goto :eof
 pause
