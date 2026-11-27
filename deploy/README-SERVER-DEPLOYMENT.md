@@ -130,7 +130,9 @@ Akun **Editor** dan **Viewer** tidak dibuat secara otomatis. Setelah login sebag
 - **Viewer**: *Read-only* (melihat catatan, tugas, kalender, timeline, dan dokumen).
 
 > [!IMPORTANT]
-> Segera ganti password default `admin` sebelum server dibuka ke tim. Karena UI Manajemen Pengguna saat ini fokus pada tambah/hapus user, penggantian password `admin` dapat dilakukan lewat API `PUT /api/auth/users/admin`:
+> Segera ganti password default `admin` sebelum server dibuka ke tim. Caranya:
+> 1. Login sebagai `admin` (`admin123`), buka **Manajemen Pengguna (`👥`)**, lalu klik tombol **🔑 Password** pada baris `admin`.
+> 2. Atau lewat API `PUT /api/auth/users/admin`:
 > ```bash
 > # 1. Login untuk mendapatkan token sesi
 > TOKEN=$(curl -s -X POST http://127.0.0.1:4321/api/auth/login \

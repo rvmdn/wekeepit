@@ -557,15 +557,27 @@
               <td>${escapeHtml(u.displayName || '-')}</td>
               <td><span class="auth-role-badge ${roleClass}">${roleLabel}</span></td>
               <td style="text-align: center;">
-                ${isSelf ? '<span style="font-size: 0.74rem; color: var(--text-muted);">(Akun Anda)</span>' : `
-                  <button type="button" class="btn btn-sm btn-secondary btn-delete-user" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem; color: #ef4444;" title="Hapus akun pengguna">
-                    🗑️ Hapus
+                <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center;">
+                  <button type="button" class="btn btn-sm btn-secondary btn-change-password" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem;" title="Ubah password akun ini">
+                    🔑 Password
                   </button>
-                `}
+                  ${isSelf ? '<span style="font-size: 0.74rem; color: var(--text-muted);">(Akun Anda)</span>' : `
+                    <button type="button" class="btn btn-sm btn-secondary btn-delete-user" data-username="${escapeHtml(u.username)}" style="padding: 2px 8px; font-size: 0.74rem; color: #ef4444;" title="Hapus akun pengguna">
+                      🗑️ Hapus
+                    </button>
+                  `}
+                </div>
               </td>
             </tr>
           `;
         }).join('');
+
+        tbody.querySelectorAll('.btn-change-password').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const username = btn.getAttribute('data-username');
+            handleChangeUserPassword(username);
+          });
+        });
 
         tbody.querySelectorAll('.btn-delete-user').forEach(btn => {
           btn.addEventListener('click', () => {
@@ -637,6 +649,32 @@
         submitBtn.disabled = false;
         submitBtn.innerHTML = '<span>Simpan Pengguna</span>';
       }
+    }
+  }
+
+  async function handleChangeUserPassword(username) {
+    if (!username) return;
+    const newPassword = prompt(`Masukkan password baru untuk '${username}' (minimal 6 karakter):`);
+    if (newPassword === null) return;
+    if (newPassword.length < 6) {
+      alert('Password baru minimal 6 karakter.');
+      return;
+    }
+
+    try {
+      const res = await fetch(apiUrl('/api/auth/users/' + encodeURIComponent(username)), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify({ password: newPassword })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alertToast(`Password untuk '${username}' berhasil diperbarui.`);
+      } else {
+        alert(data.error || 'Gagal memperbarui password.');
+      }
+    } catch (e) {
+      alert('Terjadi kesalahan saat memperbarui password: ' + e.message);
     }
   }
 
