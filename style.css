@@ -5416,3 +5416,56 @@ body.role-viewer #myBoardView .card-action-btn[data-action="edit"],
 body.role-viewer #myBoardView .card-action-btn[data-action="delete"] {
   display: inline-flex !important;
 }
+
+/* Bulletin Board Theme: Contrast & Harmony Fixes (Kanban, Table, Presence, Filter) */
+[data-theme="bulletin-board"] .presence-avatar,
+[data-theme="bulletin-board"] .presence-dot,
+[data-theme="bulletin-board"] .presence-overflow {
+  border-color: #442a17;
+}
+
+[data-theme="bulletin-board"] .indexed-files-table td,
+[data-theme="bulletin-board"] .indexed-files-table td strong,
+[data-theme="bulletin-board"] .indexed-files-table td code {
+  color: #292524;
+}
+
+[data-theme="bulletin-board"] .workflow-view-toggle {
+  background: rgba(255, 251, 235, 0.82);
+  border: 1px solid rgba(120, 80, 40, 0.28);
+}
+
+[data-theme="bulletin-board"] .workflow-view-btn {
+  color: #442a17;
+}
+
+[data-theme="bulletin-board"] .workflow-view-btn.active {
+  background: #b45309;
+  color: #ffffff;
+}
+
+[data-theme="bulletin-board"] #myTasksFilterBtn {
+  background: rgba(255, 251, 235, 0.88);
+  border: 1px solid rgba(120, 80, 40, 0.3);
+  color: #3d2310;
+}
+
+[data-theme="bulletin-board"] .btn.btn-active-filter,
+[data-theme="bulletin-board"] #myTasksFilterBtn.btn-active-filter {
+  background: #b45309;
+  border-color: #92400e;
+  color: #ffffff;
+}
+
+[data-theme="bulletin-board"] #kanbanTotalBadge,
+[data-theme="bulletin-board"] #myBoardTotalBadge {
+  background: #fffbeb !important;
+  color: #3d2310 !important;
+  border-color: rgba(120, 80, 40, 0.28) !important;
+}
+
+[data-theme="bulletin-board"] .kanban-header-bar p,
+[data-theme="bulletin-board"] .search-view-header p,
+[data-theme="bulletin-board"] .empty-state .empty-desc {
+  color: #3f2c1c;
+}
