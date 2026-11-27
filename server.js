@@ -235,6 +235,19 @@ function createServerApp(options = {}) {
   const defaultVaultDir = options.vaultDir
     || process.env.VAULT_STORAGE_DIR
     || (process.platform === 'win32' && fs.existsSync('D:\\') ? 'D:\\WeKeepIt-Vault' : path.join(baseDir, 'vault-storage'));
+  const sseClients = new Set();
+
+  function broadcastEvent(eventName, payload = {}) {
+    if (sseClients.size === 0) return;
+    const frame = `event: ${eventName}\ndata: ${JSON.stringify({ ...payload, ts: Date.now() })}\n\n`;
+    for (const clientRes of sseClients) {
+      try {
+        clientRes.write(frame);
+      } catch {
+        sseClients.delete(clientRes);
+      }
+    }
+  }
 
   function initWatchers() {
     try {
@@ -479,6 +492,10 @@ function createServerApp(options = {}) {
           const cards = await parseBody(req);
           if (Array.isArray(cards)) {
             writeJsonFile(dataFile, cards);
+            broadcastEvent('cards_updated', {
+              count: cards.length,
+              by: authUser ? authUser.username : 'local'
+            });
             sendJson(res, 200, { success: true, count: cards.length });
             return;
           }
@@ -505,6 +522,7 @@ function createServerApp(options = {}) {
         try {
           const schema = await parseBody(req);
           writeJsonFile(schemaFile, schema);
+          broadcastEvent('schema_updated', { by: authUser ? authUser.username : 'local' });
           sendJson(res, 200, { success: true });
           return;
         } catch (err) {
@@ -522,6 +540,36 @@ function createServerApp(options = {}) {
         stats: db.getStats()
       });
       return;
+    }
+
+    // Real-time Server-Sent Events (SSE) stream for live multi-user sync
+    if (pathname === '/api/events') {
+      if (req.method === 'GET') {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no'
+        });
+        res.write(`event: connected\ndata: ${JSON.stringify({ ok: true, ts: Date.now() })}\n\n`);
+        sseClients.add(res);
+
+        const heartbeat = setInterval(() => {
+          try {
+            res.write(': heartbeat\n\n');
+          } catch {
+            clearInterval(heartbeat);
+            sseClients.delete(res);
+          }
+        }, 25000);
+        if (typeof heartbeat.unref === 'function') heartbeat.unref();
+
+        req.on('close', () => {
+          clearInterval(heartbeat);
+          sseClients.delete(res);
+        });
+        return;
+      }
     }
 
     if (pathname === '/api/browse-folder') {
@@ -792,6 +840,11 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
 
           // Trigger indexing for this folder so the file is immediately searchable
           await documentIndexer.reindexFolder(targetFolder.id);
+          broadcastEvent('vault_updated', {
+            fileName: finalName,
+            folderId: targetFolder.id,
+            by: authUser ? authUser.username : 'local'
+          });
 
           sendJson(res, 201, {
             success: true,
@@ -1221,6 +1274,14 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
     }
 
     closePromise = new Promise((resolve, reject) => {
+      // Close any active SSE streams immediately so server.close() never hangs
+      for (const clientRes of sseClients) {
+        try {
+          clientRes.end();
+        } catch {}
+      }
+      sseClients.clear();
+
       const closeHttpServer = (done) => {
         if (server.listening) {
           originalClose((err) => {

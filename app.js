@@ -422,6 +422,12 @@
     }
     // Refresh roster & My Tasks button visibility after session change
     loadTeamRoster();
+    if (user && isServerAvailable) {
+      initRealtimeSync();
+    } else if (!user && realtimeEventSource) {
+      try { realtimeEventSource.close(); } catch (_) {}
+      realtimeEventSource = null;
+    }
   }
 
   function showAuthModal() {
@@ -710,6 +716,7 @@
     renderAll();
     if (isServerAvailable) {
       pollIndexerStatus();
+      initRealtimeSync();
     }
     // Auto-reconnect polling if server was started after page loaded
     setInterval(async () => {
@@ -717,6 +724,71 @@
         await checkServer();
       }
     }, 2000);
+  }
+
+  // --- REAL-TIME MULTI-USER SYNC (SSE) ---
+  let realtimeEventSource = null;
+  let pendingRemoteCardsSync = false;
+
+  function isUserInteractingWithBoard() {
+    const activeModals = document.querySelectorAll('.modal-overlay.active, #cardModal[style*="flex"], #schemaModal[style*="flex"], #userManagementModal[style*="flex"]');
+    if (activeModals.length > 0) return true;
+    if (document.querySelector('.kanban-card-dragging, .dragging')) return true;
+    return false;
+  }
+
+  async function syncCardsFromServer() {
+    if (!isServerAvailable) return;
+    if (authEnabled && !currentUser) return;
+    if (isUserInteractingWithBoard()) {
+      pendingRemoteCardsSync = true;
+      return;
+    }
+    try {
+      const res = await fetch(apiUrl('/api/cards?_t=') + Date.now(), { cache: 'no-store' });
+      if (!res.ok) return;
+      const loaded = await res.json();
+      if (!Array.isArray(loaded)) return;
+      if (JSON.stringify(loaded) === JSON.stringify(cards)) return;
+      cards = loaded;
+      localStorage.setItem('wekeepit_cards_backup', JSON.stringify(cards));
+      reminderService.setCards(cards);
+      renderAll();
+    } catch (_) {}
+  }
+
+  function flushPendingRemoteSync() {
+    if (pendingRemoteCardsSync) {
+      pendingRemoteCardsSync = false;
+      syncCardsFromServer();
+    }
+  }
+
+  function initRealtimeSync() {
+    if (!isServerAvailable || typeof EventSource === 'undefined') return;
+    if (authEnabled && !currentUser) return;
+    if (realtimeEventSource) {
+      try { realtimeEventSource.close(); } catch (_) {}
+      realtimeEventSource = null;
+    }
+
+    try {
+      realtimeEventSource = new EventSource(apiUrl('/api/events'));
+      realtimeEventSource.addEventListener('cards_updated', () => {
+        syncCardsFromServer();
+      });
+      realtimeEventSource.addEventListener('schema_updated', async () => {
+        if (!isUserInteractingWithBoard()) {
+          await loadSchema();
+          renderAll();
+        }
+      });
+      realtimeEventSource.addEventListener('vault_updated', async () => {
+        if (currentDomain === 'documents') {
+          await loadFoldersAndDocuments();
+        }
+      });
+    } catch (_) {}
   }
 
   async function checkServer() {
@@ -731,6 +803,7 @@
             loadFoldersAndDocuments();
           }
           pollIndexerStatus();
+          initRealtimeSync();
         }
         return true;
       }
@@ -4004,6 +4077,7 @@
 
   function closeCardModal() {
     hideModalOverlay(cardModal);
+    flushPendingRemoteSync();
   }
 
   // --- ASSIGNEE PICKER ---
