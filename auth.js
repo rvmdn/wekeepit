@@ -161,6 +161,7 @@ class AuthManager {
       username: u.username,
       role: u.role,
       displayName: u.displayName || u.username,
+      statusText: u.statusText || '',
       createdAt: u.createdAt
     }));
   }
@@ -244,7 +245,54 @@ class AuthManager {
       username: user.username,
       role: user.role,
       displayName: user.displayName,
+      statusText: user.statusText || '',
       createdAt: user.createdAt
+    };
+  }
+
+  updateOwnProfile(username, { displayName, statusText, currentPassword, newPassword } = {}) {
+    const cleanUser = String(username || '').trim().toLowerCase();
+    const users = this.loadUsers();
+    const idx = users.findIndex(u => u.username.toLowerCase() === cleanUser);
+    if (idx === -1) {
+      throw new Error(`Pengguna '${cleanUser}' tidak ditemukan.`);
+    }
+
+    const user = users[idx];
+
+    if (newPassword !== undefined && newPassword !== '') {
+      if (!currentPassword || !this.verifyPassword(currentPassword, user.passwordHash)) {
+        throw new Error('Password lama tidak sesuai.');
+      }
+      if (typeof newPassword !== 'string' || newPassword.length < 6) {
+        throw new Error('Password baru minimal 6 karakter.');
+      }
+      user.passwordHash = this.hashPassword(newPassword);
+    }
+
+    if (displayName !== undefined) {
+      user.displayName = String(displayName).trim().slice(0, 60) || user.username;
+    }
+
+    if (statusText !== undefined) {
+      user.statusText = String(statusText).trim().slice(0, 60);
+    }
+
+    this.saveUsers(users);
+
+    // Sync active in-memory sessions for this user
+    for (const session of this.sessions.values()) {
+      if (session.username.toLowerCase() === cleanUser) {
+        session.displayName = user.displayName;
+        session.statusText = user.statusText || '';
+      }
+    }
+
+    return {
+      username: user.username,
+      role: user.role,
+      displayName: user.displayName,
+      statusText: user.statusText || ''
     };
   }
 

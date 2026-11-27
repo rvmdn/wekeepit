@@ -703,6 +703,101 @@
     }
   }
 
+  function openProfileModal() {
+    if (!authEnabled || !currentUser) return;
+    const modal = document.getElementById('userProfileModal');
+    if (!modal) return;
+    const unameEl = document.getElementById('profileUsernameLabel');
+    const roleBadge = document.getElementById('profileRoleBadge');
+    const nameInput = document.getElementById('profileDisplayName');
+    const statusInput = document.getElementById('profileStatusText');
+    const curPass = document.getElementById('profileCurrentPassword');
+    const newPass = document.getElementById('profileNewPassword');
+    const alertBox = document.getElementById('profileModalAlert');
+
+    if (unameEl) unameEl.textContent = currentUser.username || '';
+    const role = (currentUser.role || 'viewer').toLowerCase();
+    if (roleBadge) {
+      roleBadge.textContent = role === 'admin' ? 'Admin' : (role === 'editor' ? 'Editor' : 'Viewer');
+      roleBadge.className = `auth-role-badge role-${role}`;
+    }
+    if (nameInput) nameInput.value = currentUser.displayName || currentUser.username || '';
+    if (statusInput) statusInput.value = currentUser.statusText || '';
+    if (curPass) curPass.value = '';
+    if (newPass) newPass.value = '';
+    if (alertBox) {
+      alertBox.style.display = 'none';
+      alertBox.textContent = '';
+    }
+    modal.style.display = 'flex';
+  }
+
+  function closeProfileModal() {
+    const modal = document.getElementById('userProfileModal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  async function handleProfileSubmit(e) {
+    if (e) e.preventDefault();
+    const nameInput = document.getElementById('profileDisplayName');
+    const statusInput = document.getElementById('profileStatusText');
+    const curPass = document.getElementById('profileCurrentPassword');
+    const newPass = document.getElementById('profileNewPassword');
+    const alertBox = document.getElementById('profileModalAlert');
+    const submitBtn = document.getElementById('btnSaveProfile');
+
+    const displayName = nameInput ? nameInput.value.trim() : '';
+    const statusText = statusInput ? statusInput.value.trim() : '';
+    const currentPassword = curPass ? curPass.value : '';
+    const newPassword = newPass ? newPass.value : '';
+
+    if (newPassword && !currentPassword) {
+      if (alertBox) {
+        alertBox.textContent = 'Masukkan password lama untuk mengganti password.';
+        alertBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Menyimpan...';
+    }
+
+    try {
+      const payload = { displayName, statusText };
+      if (newPassword) {
+        payload.currentPassword = currentPassword;
+        payload.newPassword = newPassword;
+      }
+      const res = await fetch(apiUrl('/api/auth/profile'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.user) {
+        currentUser = { ...currentUser, ...data.user };
+        applyUserSession(currentUser, true);
+        closeProfileModal();
+        alertToast('Profil berhasil diperbarui.');
+      } else if (alertBox) {
+        alertBox.textContent = data.error || 'Gagal menyimpan profil.';
+        alertBox.style.display = 'block';
+      }
+    } catch (err) {
+      if (alertBox) {
+        alertBox.textContent = 'Terjadi kesalahan: ' + err.message;
+        alertBox.style.display = 'block';
+      }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Simpan Profil';
+      }
+    }
+  }
+
   // --- INITIALIZATION ---
   async function init() {
     if (!(window.chrome && window.chrome.webview)) {
@@ -808,7 +903,8 @@
       const statusText = u.editingTitle
         ? `Sedang mengedit: ${u.editingTitle}`
         : (u.view || 'Notice Board');
-      const title = `${name}${isSelf ? ' (Anda)' : ''} • ${roleLabel}\n📍 ${statusText}`;
+      const customStatus = u.statusText ? `\n💬 ${u.statusText}` : '';
+      const title = `${name}${isSelf ? ' (Anda)' : ''} • ${roleLabel}${customStatus}\n📍 ${statusText}`;
       return `
         <span class="presence-avatar${u.editingTitle ? ' is-editing' : ''}" style="background:${color};" title="${escapeHtml(title)}">
           ${escapeHtml(initial)}
@@ -1129,6 +1225,23 @@
     if (manageUsersBtn) {
       manageUsersBtn.addEventListener('click', openUserMgmtModal);
     }
+
+    const authUserNameEl = document.getElementById('authUserName');
+    if (authUserNameEl) {
+      authUserNameEl.addEventListener('click', openProfileModal);
+    }
+    const closeProfileModalBtn = document.getElementById('closeProfileModal');
+    if (closeProfileModalBtn) closeProfileModalBtn.addEventListener('click', closeProfileModal);
+    const cancelProfileModalBtn = document.getElementById('cancelProfileModalBtn');
+    if (cancelProfileModalBtn) cancelProfileModalBtn.addEventListener('click', closeProfileModal);
+    const userProfileForm = document.getElementById('userProfileForm');
+    if (userProfileForm) userProfileForm.addEventListener('submit', handleProfileSubmit);
+    document.querySelectorAll('.profile-status-preset').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const statusInput = document.getElementById('profileStatusText');
+        if (statusInput) statusInput.value = btn.getAttribute('data-status') || '';
+      });
+    });
     const closeUserMgmtModalBtn = document.getElementById('closeUserMgmtModal');
     if (closeUserMgmtModalBtn) {
       closeUserMgmtModalBtn.addEventListener('click', closeUserMgmtModal);

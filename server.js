@@ -246,6 +246,7 @@ function createServerApp(options = {}) {
         displayName: info.displayName || info.username,
         role: info.role || 'viewer',
         view: info.view || 'Notice Board',
+        statusText: info.statusText || '',
         editingTitle: info.editingTitle || null
       });
     }
@@ -419,6 +420,36 @@ function createServerApp(options = {}) {
       }
     }
 
+    // Self-service profile & password update (any authenticated user)
+    if (pathname === '/api/auth/profile') {
+      if (req.method === 'PUT') {
+        if (authManager.isAuthEnabled() && !authUser) {
+          sendJson(res, 401, { error: '401 Unauthorized: Otentikasi diperlukan.', authRequired: true });
+          return;
+        }
+        if (!authManager.isAuthEnabled()) {
+          sendJson(res, 400, { error: 'Profil pengguna hanya tersedia pada mode server (AUTH_ENABLED=true).' });
+          return;
+        }
+        try {
+          const body = await parseBody(req);
+          const updated = authManager.updateOwnProfile(authUser.username, body);
+          for (const info of sseClients.values()) {
+            if (info.username === updated.username) {
+              info.displayName = updated.displayName;
+              info.statusText = updated.statusText || '';
+            }
+          }
+          broadcastEvent('presence_updated', { users: getActivePresenceList() });
+          sendJson(res, 200, { success: true, user: updated });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
+      }
+    }
+
     // User management (Roster read for all authenticated users, mutations for Admin only)
     if (pathname === '/api/auth/users') {
       if (req.method === 'GET') {
@@ -566,6 +597,7 @@ function createServerApp(options = {}) {
           displayName: authUser ? (authUser.displayName || authUser.username) : 'Pemilik Lokal',
           role: authUser ? authUser.role : 'admin',
           view: String(viewParam).slice(0, 60),
+          statusText: authUser ? (authUser.statusText || '') : '',
           editingTitle: null
         };
 
