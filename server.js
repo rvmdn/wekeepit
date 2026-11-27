@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
@@ -66,12 +67,17 @@ const ALLOWED_EXACT_ORIGINS = new Set([
   'http://wekeepit.local'
 ]);
 
-function isAllowedOrigin(origin) {
+function isAllowedOrigin(origin, reqHost = '') {
   if (!origin || typeof origin !== 'string') return false;
   const clean = origin.trim();
   if (clean === 'null' || clean === '') return false; // Strictly reject null origin (Temuan 2)
   if (ALLOWED_EXACT_ORIGINS.has(clean)) return true;
-  return ALLOWED_LOOPBACK_ORIGIN_REGEX.test(clean);
+  if (ALLOWED_LOOPBACK_ORIGIN_REGEX.test(clean)) return true;
+  if (process.env.ALLOW_REMOTE_HOST === 'true' && reqHost) {
+    // Allow strictly same-origin requests when remote host mode is enabled
+    return clean === `http://${reqHost}` || clean === `https://${reqHost}`;
+  }
+  return false;
 }
 
 function launchTarget(executable, args) {
@@ -242,7 +248,7 @@ function createServerApp(options = {}) {
     }
   }
 
-  const server = http.createServer(async (req, res) => {
+  const requestHandler = async (req, res) => {
     // 1. Host Header Validation (Prevent DNS Rebinding attacks)
     const host = req.headers.host || '';
     const isHostValid = !host || /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(host) || (process.env.ALLOW_REMOTE_HOST === 'true');
@@ -256,7 +262,7 @@ function createServerApp(options = {}) {
     const origin = req.headers.origin;
 
     if (origin !== undefined) {
-      if (isAllowedOrigin(origin)) {
+      if (isAllowedOrigin(origin, host)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -351,7 +357,8 @@ function createServerApp(options = {}) {
             return;
           }
 
-          res.setHeader('Set-Cookie', `wekeepit_token=${result.token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`);
+          const secureFlag = req.socket && req.socket.encrypted ? '; Secure' : '';
+          res.setHeader('Set-Cookie', `wekeepit_token=${result.token}; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Max-Age=${7 * 24 * 3600}`);
           sendJson(res, 200, {
             success: true,
             token: result.token,
@@ -371,7 +378,8 @@ function createServerApp(options = {}) {
         if (token) {
           authManager.logout(token);
         }
-        res.setHeader('Set-Cookie', 'wekeepit_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
+        const secureFlag = req.socket && req.socket.encrypted ? '; Secure' : '';
+        res.setHeader('Set-Cookie', `wekeepit_token=; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Max-Age=0`);
         sendJson(res, 200, { success: true });
         return;
       }
@@ -961,7 +969,31 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
         }
       });
     });
-  });
+  };
+
+  const sslPfxPath = options.sslPfxPath || process.env.SSL_PFX_PATH || '';
+  const sslKeyPath = options.sslKeyPath || process.env.SSL_KEY_PATH || '';
+  const sslCertPath = options.sslCertPath || process.env.SSL_CERT_PATH || '';
+  const sslPassphrase = options.sslPassphrase || process.env.SSL_PASSPHRASE || '';
+
+  let isHttps = false;
+  let server;
+  if (sslPfxPath) {
+    server = https.createServer({
+      pfx: fs.readFileSync(sslPfxPath),
+      passphrase: sslPassphrase
+    }, requestHandler);
+    isHttps = true;
+  } else if (sslKeyPath && sslCertPath) {
+    server = https.createServer({
+      key: fs.readFileSync(sslKeyPath),
+      cert: fs.readFileSync(sslCertPath),
+      ...(sslPassphrase ? { passphrase: sslPassphrase } : {})
+    }, requestHandler);
+    isHttps = true;
+  } else {
+    server = http.createServer(requestHandler);
+  }
 
   // Wrap server.listen to strictly enforce loopback binding unless ALLOW_REMOTE_HOST=true
   const originalListen = server.listen.bind(server);
@@ -1131,9 +1163,10 @@ if (require.main === module) {
   app.initWatchers();
   app.server.listen(PORT, HOST, () => {
     const actualPort = app.server.address() ? app.server.address().port : PORT;
-    console.log(`WeKeepIt V2 running at: http://${HOST}:${actualPort}`);
+    const proto = (process.env.SSL_PFX_PATH || (process.env.SSL_KEY_PATH && process.env.SSL_CERT_PATH)) ? 'https' : 'http';
+    console.log(`WeKeepIt V2 running at: ${proto}://${HOST}:${actualPort}`);
     if (process.send) {
-      process.send({ event: 'listening', port: actualPort, host: HOST, address: app.server.address() });
+      process.send({ event: 'listening', port: actualPort, host: HOST, protocol: proto, address: app.server.address() });
     }
   });
 
