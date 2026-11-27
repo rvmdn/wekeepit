@@ -767,6 +767,72 @@
     }
   }
 
+  const PRESENCE_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#f97316'];
+
+  function getPresenceColor(username) {
+    let hash = 0;
+    for (let i = 0; i < username.length; i++) {
+      hash = ((hash << 5) - hash) + username.charCodeAt(i);
+      hash |= 0;
+    }
+    return PRESENCE_COLORS[Math.abs(hash) % PRESENCE_COLORS.length];
+  }
+
+  function getDomainLabel(domain) {
+    if (domain === 'kanban') return 'Kanban Flow';
+    if (domain === 'documents') return 'Dokumen Lokal';
+    if (domain === 'search') return 'Hasil Pencarian';
+    return 'Notice Board';
+  }
+
+  function renderOnlinePresence(users = []) {
+    const bar = document.getElementById('onlinePresenceBar');
+    if (!bar) return;
+    if (!authEnabled || !Array.isArray(users) || users.length === 0) {
+      bar.style.display = 'none';
+      bar.innerHTML = '';
+      return;
+    }
+
+    // Show other online users first (or all online users, capped at 5 + overflow)
+    const maxVisible = 5;
+    const visible = users.slice(0, maxVisible);
+    const overflow = users.length - visible.length;
+
+    bar.innerHTML = visible.map(u => {
+      const name = u.displayName || u.username || 'User';
+      const initial = name.charAt(0).toUpperCase();
+      const color = getPresenceColor(u.username || name);
+      const isSelf = currentUser && currentUser.username === u.username;
+      const roleLabel = u.role === 'admin' ? 'Admin' : (u.role === 'editor' ? 'Editor' : 'Viewer');
+      const statusText = u.editingTitle
+        ? `Sedang mengedit: ${u.editingTitle}`
+        : (u.view || 'Notice Board');
+      const title = `${name}${isSelf ? ' (Anda)' : ''} • ${roleLabel}\n📍 ${statusText}`;
+      return `
+        <span class="presence-avatar${u.editingTitle ? ' is-editing' : ''}" style="background:${color};" title="${escapeHtml(title)}">
+          ${escapeHtml(initial)}
+          <span class="presence-dot"></span>
+        </span>
+      `;
+    }).join('') + (overflow > 0 ? `<span class="presence-overflow" title="${overflow} pengguna online lainnya">+${overflow}</span>` : '');
+
+    bar.style.display = 'inline-flex';
+  }
+
+  function reportPresence(extra = {}) {
+    if (!isServerAvailable || !authEnabled || !currentUser) return;
+    const payload = {
+      view: getDomainLabel(currentDomain),
+      ...extra
+    };
+    fetch(apiUrl('/api/presence'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+  }
+
   function initRealtimeSync() {
     if (!isServerAvailable || typeof EventSource === 'undefined') return;
     if (authEnabled && !currentUser) return;
@@ -776,7 +842,14 @@
     }
 
     try {
-      realtimeEventSource = new EventSource(apiUrl('/api/events'));
+      const viewQuery = encodeURIComponent(getDomainLabel(currentDomain));
+      realtimeEventSource = new EventSource(apiUrl(`/api/events?view=${viewQuery}`));
+      realtimeEventSource.addEventListener('presence_updated', (e) => {
+        try {
+          const data = JSON.parse(e.data || '{}');
+          renderOnlinePresence(data.users || []);
+        } catch (_) {}
+      });
       realtimeEventSource.addEventListener('cards_updated', () => {
         syncCardsFromServer();
       });
@@ -1846,6 +1919,7 @@
 
   function switchDomain(domain) {
     currentDomain = domain;
+    reportPresence({ view: getDomainLabel(domain) });
 
     // Update active tab buttons
     document.querySelectorAll('.domain-tab').forEach(tab => {
@@ -4069,6 +4143,7 @@
     }
 
     showModalOverlay(cardModal);
+    reportPresence({ editingTitle: card ? (card.title || 'Catatan') : 'Buat Catatan Baru' });
     const modalBody = cardModal.querySelector('.modal-body');
     if (modalBody) modalBody.scrollTop = 0;
     if (formContent) {
@@ -4080,6 +4155,7 @@
 
   function closeCardModal() {
     hideModalOverlay(cardModal);
+    reportPresence({ editingTitle: null });
     flushPendingRemoteSync();
   }
 

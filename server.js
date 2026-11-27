@@ -235,12 +235,27 @@ function createServerApp(options = {}) {
   const defaultVaultDir = options.vaultDir
     || process.env.VAULT_STORAGE_DIR
     || (process.platform === 'win32' && fs.existsSync('D:\\') ? 'D:\\WeKeepIt-Vault' : path.join(baseDir, 'vault-storage'));
-  const sseClients = new Set();
+  const sseClients = new Map(); // res -> { username, displayName, role, view, editingTitle }
+
+  function getActivePresenceList() {
+    const byUser = new Map();
+    for (const info of sseClients.values()) {
+      if (!info || !info.username) continue;
+      byUser.set(info.username, {
+        username: info.username,
+        displayName: info.displayName || info.username,
+        role: info.role || 'viewer',
+        view: info.view || 'Notice Board',
+        editingTitle: info.editingTitle || null
+      });
+    }
+    return Array.from(byUser.values());
+  }
 
   function broadcastEvent(eventName, payload = {}) {
     if (sseClients.size === 0) return;
     const frame = `event: ${eventName}\ndata: ${JSON.stringify({ ...payload, ts: Date.now() })}\n\n`;
-    for (const clientRes of sseClients) {
+    for (const clientRes of sseClients.keys()) {
       try {
         clientRes.write(frame);
       } catch {
@@ -542,17 +557,27 @@ function createServerApp(options = {}) {
       return;
     }
 
-    // Real-time Server-Sent Events (SSE) stream for live multi-user sync
+    // Real-time Server-Sent Events (SSE) stream for live multi-user sync & presence
     if (pathname === '/api/events') {
       if (req.method === 'GET') {
+        const viewParam = reqUrl.searchParams.get('view') || 'Notice Board';
+        const clientInfo = {
+          username: authUser ? authUser.username : 'local-owner',
+          displayName: authUser ? (authUser.displayName || authUser.username) : 'Pemilik Lokal',
+          role: authUser ? authUser.role : 'admin',
+          view: String(viewParam).slice(0, 60),
+          editingTitle: null
+        };
+
         res.writeHead(200, {
           'Content-Type': 'text/event-stream; charset=utf-8',
           'Cache-Control': 'no-cache, no-transform',
           'Connection': 'keep-alive',
           'X-Accel-Buffering': 'no'
         });
+        sseClients.set(res, clientInfo);
         res.write(`event: connected\ndata: ${JSON.stringify({ ok: true, ts: Date.now() })}\n\n`);
-        sseClients.add(res);
+        broadcastEvent('presence_updated', { users: getActivePresenceList() });
 
         const heartbeat = setInterval(() => {
           try {
@@ -560,6 +585,7 @@ function createServerApp(options = {}) {
           } catch {
             clearInterval(heartbeat);
             sseClients.delete(res);
+            broadcastEvent('presence_updated', { users: getActivePresenceList() });
           }
         }, 25000);
         if (typeof heartbeat.unref === 'function') heartbeat.unref();
@@ -567,8 +593,33 @@ function createServerApp(options = {}) {
         req.on('close', () => {
           clearInterval(heartbeat);
           sseClients.delete(res);
+          broadcastEvent('presence_updated', { users: getActivePresenceList() });
         });
         return;
+      }
+    }
+
+    // Update current user's active view / editing status for presence bar
+    if (pathname === '/api/presence') {
+      if (req.method === 'POST') {
+        try {
+          const payload = await parseBody(req);
+          const uname = authUser ? authUser.username : 'local-owner';
+          for (const info of sseClients.values()) {
+            if (info.username === uname) {
+              if (payload.view !== undefined) info.view = String(payload.view || 'Notice Board').slice(0, 60);
+              if (payload.editingTitle !== undefined) {
+                info.editingTitle = payload.editingTitle ? String(payload.editingTitle).slice(0, 80) : null;
+              }
+            }
+          }
+          broadcastEvent('presence_updated', { users: getActivePresenceList() });
+          sendJson(res, 200, { success: true });
+          return;
+        } catch (err) {
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
       }
     }
 
@@ -1275,7 +1326,7 @@ if ($res -eq [System.Windows.Forms.DialogResult]::OK) {
 
     closePromise = new Promise((resolve, reject) => {
       // Close any active SSE streams immediately so server.close() never hangs
-      for (const clientRes of sseClients) {
+      for (const clientRes of sseClients.keys()) {
         try {
           clientRes.end();
         } catch {}
