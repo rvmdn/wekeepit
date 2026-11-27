@@ -1,6 +1,7 @@
 # Sensitive User Data, TLS Certificates & Backups
 wekeepit-data.json
 users.json
+sessions.json
 wekeepit-index.db*
 my-boards/
 backups/

@@ -43,11 +43,58 @@ const ROLE_PERMISSIONS = {
 class AuthManager {
   constructor(options = {}) {
     this.usersFile = options.usersFile || process.env.USERS_FILE_PATH || DEFAULT_USERS_FILE;
+    this.sessionsFile = options.sessionsFile
+      || process.env.SESSIONS_FILE_PATH
+      || path.join(path.dirname(path.resolve(this.usersFile)), 'sessions.json');
     this.authEnabled = options.authEnabled !== undefined
       ? Boolean(options.authEnabled)
       : (process.env.AUTH_ENABLED === 'true' || process.env.AUTH_ENABLED === '1');
-    this.sessions = new Map(); // token -> { username, role, displayName, expiresAt }
+    this.sessions = new Map(); // token -> { username, role, displayName, statusText, expiresAt }
     this.ensureUsersStore();
+    this.loadSessions();
+  }
+
+  loadSessions() {
+    try {
+      if (!fs.existsSync(this.sessionsFile)) return;
+      const raw = fs.readFileSync(this.sessionsFile, 'utf-8');
+      if (!raw || !raw.trim()) return;
+      const parsed = JSON.parse(raw);
+      const now = Date.now();
+      if (Array.isArray(parsed)) {
+        for (const s of parsed) {
+          if (s && s.token && s.expiresAt > now) {
+            this.sessions.set(s.token, s);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[AuthManager] Gagal memuat sesi tersimpan:', err.message);
+    }
+  }
+
+  persistSessions() {
+    try {
+      const now = Date.now();
+      const active = [];
+      for (const [token, s] of this.sessions.entries()) {
+        if (s && s.expiresAt > now) {
+          active.push({ ...s, token });
+        } else {
+          this.sessions.delete(token);
+        }
+      }
+      const resolved = path.resolve(this.sessionsFile);
+      const dir = path.dirname(resolved);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const tmp = resolved + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(active, null, 2), 'utf-8');
+      fs.renameSync(tmp, resolved);
+    } catch (err) {
+      console.warn('[AuthManager] Gagal menyimpan sesi:', err.message);
+    }
   }
 
   isAuthEnabled() {
@@ -259,6 +306,7 @@ class AuthManager {
         }
       }
     }
+    this.persistSessions();
 
     return {
       username: user.username,
@@ -306,6 +354,7 @@ class AuthManager {
         session.statusText = user.statusText || '';
       }
     }
+    this.persistSessions();
 
     return {
       username: user.username,
@@ -334,6 +383,12 @@ class AuthManager {
     }
 
     this.saveUsers(filtered);
+    for (const [token, session] of this.sessions.entries()) {
+      if (session.username.toLowerCase() === cleanUser) {
+        this.sessions.delete(token);
+      }
+    }
+    this.persistSessions();
     return true;
   }
 
@@ -353,10 +408,12 @@ class AuthManager {
       username: user.username,
       role: user.role,
       displayName: user.displayName || user.username,
+      statusText: user.statusText || '',
       expiresAt: Date.now() + SESSION_TTL_MS
     };
 
     this.sessions.set(token, session);
+    this.persistSessions();
 
     return {
       success: true,
@@ -364,7 +421,8 @@ class AuthManager {
       user: {
         username: user.username,
         role: user.role,
-        displayName: user.displayName || user.username
+        displayName: user.displayName || user.username,
+        statusText: user.statusText || ''
       }
     };
   }
@@ -372,6 +430,7 @@ class AuthManager {
   logout(token) {
     if (token && this.sessions.has(token)) {
       this.sessions.delete(token);
+      this.persistSessions();
       return true;
     }
     return false;

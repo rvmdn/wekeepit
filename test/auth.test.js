@@ -148,4 +148,23 @@ test('AuthManager Unit Test Suite', async (t) => {
       auth.deleteUser('admin', 'admin');
     }, /Tidak dapat menghapus akun admin Anda sendiri/);
   });
+
+  await t.test('Sessions persist across AuthManager restarts', () => {
+    const auth1 = new AuthManager({ usersFile: testUsersFile, authEnabled: true });
+    const loginRes = auth1.login('admin', 'admin123');
+    assert.strictEqual(loginRes.success, true);
+
+    // Simulate server restart by creating a new AuthManager pointing to the same users/sessions store
+    const auth2 = new AuthManager({ usersFile: testUsersFile, authEnabled: true });
+    const req = { headers: { authorization: `Bearer ${loginRes.token}` } };
+    const restored = auth2.authenticateRequest(req);
+    assert.ok(restored);
+    assert.strictEqual(restored.username, 'admin');
+    assert.strictEqual(restored.role, ROLES.ADMIN);
+
+    // Logout removes session from disk too
+    assert.strictEqual(auth2.logout(loginRes.token), true);
+    const auth3 = new AuthManager({ usersFile: testUsersFile, authEnabled: true });
+    assert.strictEqual(auth3.authenticateRequest(req), null);
+  });
 });
