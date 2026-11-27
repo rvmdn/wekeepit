@@ -5306,3 +5306,32 @@ body.role-viewer .kanban-card {
 }
 
 body.role-viewer #uploadVaultDocBtn { display: none !important; }
+
+/* Bulletin Board Theme: Auth User Pill Header Integration */
+[data-theme="bulletin-board"] .auth-user-pill {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="bulletin-board"] .auth-user-name {
+  color: #faeedd;
+}
+
+[data-theme="bulletin-board"] .auth-role-badge.role-editor {
+  background: rgba(56, 189, 248, 0.22);
+  color: #bae6fd;
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+[data-theme="bulletin-board"] .auth-role-badge.role-admin {
+  background: rgba(192, 132, 252, 0.22);
+  color: #e9d5ff;
+  border-color: rgba(192, 132, 252, 0.45);
+}
+
+[data-theme="bulletin-board"] .auth-role-badge.role-viewer {
+  background: rgba(255, 255, 255, 0.16);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.3);
+}
