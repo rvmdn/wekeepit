@@ -1,6 +1,6 @@
 # Panduan Deployment WeKeepIt ke Server RHEL / CentOS / Rocky Linux
 
-Panduan ini menjelaskan langkah demi langkah memigrasikan **WeKeepIt** dari lingkungan desktop lokal Windows ke server Linux (Red Hat Enterprise Linux / Rocky / CentOS / Ubuntu) sebagai aplikasi tim kolaboratif terpusat.
+Panduan ini menjelaskan langkah demi langkah memigrasikan **WeKeepIt** dari lingkungan desktop lokal Windows ke server Linux (Red Hat Enterprise Linux / Rocky / AlmaLinux / Ubuntu) sebagai aplikasi tim kolaboratif terpusat, termasuk prosedur **update kode tanpa kehilangan data** dan **backup**.
 
 ---
 
@@ -34,7 +34,8 @@ npm -v
 
 ## 3. Menyiapkan Direktori & Pengguna Sistem
 
-Buat pengguna sistem non-root khusus untuk menjalankan layanan:
+Pisahkan direktori **kode aplikasi** (`/opt/wekeepit`) dari **data persisten** (`/var/lib/wekeepit`) agar pembaruan kode tidak pernah menimpa data tim:
+
 ```bash
 sudo useradd -r -s /sbin/nologin wekeepit
 sudo mkdir -p /opt/wekeepit
@@ -50,9 +51,9 @@ sudo chown -R wekeepit:wekeepit /var/lib/wekeepit
 Salin berkas aplikasi ke `/opt/wekeepit`:
 ```bash
 cd /opt/wekeepit
-# Clone dari remote repository atau salin bundle v2.4.0
 git clone https://github.com/rvmdn/wekeepit.git .
-git checkout v2.4.0
+# Opsional: checkout ke tag rilis stabil terbaru, atau tetap di branch main
+git checkout v2.5.0
 
 # Install dependensi dan kompilasi modul better-sqlite3 native untuk Linux
 npm ci --production
@@ -65,6 +66,8 @@ npm test
 ---
 
 ## 5. Konfigurasi Multi-User & Systemd Service
+
+Berkas [`wekeepit.service`](wekeepit.service) sudah mengonfigurasi environment produksi (`AUTH_ENABLED=true`, `ALLOW_REMOTE_HOST=true`, serta path penyimpanan di `/var/lib/wekeepit`).
 
 1. Salin berkas unit systemd:
    ```bash
@@ -87,7 +90,7 @@ npm test
 
 ## 6. Konfigurasi Firewall & Nginx Reverse Proxy
 
-1. Buka port di firewalld (jika tanpa Nginx):
+1. Buka port di firewalld (jika diakses langsung tanpa Nginx):
    ```bash
    sudo firewall-cmd --permanent --add-port=4321/tcp
    sudo firewall-cmd --reload
@@ -97,6 +100,7 @@ npm test
    ```bash
    sudo dnf install nginx -y
    sudo cp deploy/nginx-wekeepit.conf /etc/nginx/conf.d/wekeepit.conf
+   sudo nginx -t
    sudo systemctl enable --now nginx
    ```
 
@@ -105,23 +109,80 @@ npm test
    sudo setsebool -P httpd_can_network_connect 1
    ```
 
+   Pastikan port HTTP/HTTPS dibuka jika melalui firewalld:
+   ```bash
+   sudo firewall-cmd --permanent --add-service=http
+   sudo firewall-cmd --permanent --add-service=https
+   sudo firewall-cmd --reload
+   ```
+
 ---
 
-## 7. Akun Bawaan & Akses Pengguna
+## 7. Akun Bawaan & Manajemen Pengguna
 
-Saat `AUTH_ENABLED=true`, sistem otomatis menginisialisasi akun bawaan di `/var/lib/wekeepit/users.json`:
-- **Administrator**:
-  - Username: `admin`
-  - Password: `admin123`
-  - Hak akses: Penuh (kelola pengguna, skema metadata, indexing, folder, kartu, dan arsip).
-- **Editor**:
-  - Username: `editor`
-  - Password: `editor123`
-  - Hak akses: Menambah, mengubah catatan/tugas kanban, checklist, komentar.
-- **Viewer**:
-  - Username: `viewer`
-  - Password: `viewer123`
-  - Hak akses: *Read-only* (melihat catatan, tugas, kalender, timeline, dan dokumen).
+Saat `AUTH_ENABLED=true`, sistem hanya menginisialisasi **1 akun Administrator** bawaan di `/var/lib/wekeepit/users.json` (single-seed):
+- **Username**: `admin`
+- **Password awal**: `admin123`
+- **Hak akses**: Penuh (kelola pengguna, skema metadata, indexing, folder, kartu/Kanban, dan arsip).
+
+Akun **Editor** dan **Viewer** tidak dibuat secara otomatis. Setelah login sebagai `admin`, gunakan tombol **Manajemen Pengguna (`👥`)** di header untuk menambahkan akun anggota tim:
+- **Editor**: Menambah dan mengubah catatan/tugas Kanban, checklist, komentar, serta assign tugas.
+- **Viewer**: *Read-only* (melihat catatan, tugas, kalender, timeline, dan dokumen).
 
 > [!IMPORTANT]
-> Segera ganti password akun `admin` setelah berhasil masuk di lingkungan produksi.
+> Segera ganti password default `admin` sebelum server dibuka ke tim. Karena UI Manajemen Pengguna saat ini fokus pada tambah/hapus user, penggantian password `admin` dapat dilakukan lewat API `PUT /api/auth/users/admin`:
+> ```bash
+> # 1. Login untuk mendapatkan token sesi
+> TOKEN=$(curl -s -X POST http://127.0.0.1:4321/api/auth/login \
+>   -H "Content-Type: application/json" \
+>   -d '{"username":"admin","password":"admin123"}' | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).token))")
+>
+> # 2. Ganti password admin
+> curl -s -X PUT http://127.0.0.1:4321/api/auth/users/admin \
+>   -H "Content-Type: application/json" \
+>   -H "Authorization: Bearer $TOKEN" \
+>   -d '{"password":"GANTI_DENGAN_PASSWORD_KUAT"}'
+> ```
+
+---
+
+## 8. Prosedur Update Kode (Tanpa Kehilangan Data)
+
+Karena data tersimpan di `/var/lib/wekeepit` (terpisah dari `/opt/wekeepit`), pembaruan kode tidak akan menghapus data catatan, user, maupun indeks dokumen:
+
+```bash
+cd /opt/wekeepit
+
+# 1. Tarik kode terbaru
+sudo -u wekeepit git pull origin main
+
+# 2. (Opsional) Jika package.json berubah
+sudo -u wekeepit npm ci --production
+sudo -u wekeepit npm rebuild better-sqlite3
+
+# 3. Jalankan test sebelum restart
+sudo -u wekeepit npm test
+
+# 4. Restart service (downtime ~2–3 detik, data tetap aman dengan atomic write)
+sudo systemctl restart wekeepit
+sudo systemctl status wekeepit
+```
+
+> [!NOTE]
+> `server.js` dan `auth.js` sudah menggunakan **atomic write** (`.tmp` → `.bak` → `rename`) dan auto-recovery dari `.bak` apabila file utama korup saat terjadi crash mendadak.
+
+---
+
+## 9. Backup & Pemulihan Data
+
+Seluruh data produksi berada di `/var/lib/wekeepit`:
+- `wekeepit-data.json` (dan `wekeepit-data.json.bak`) — catatan & tugas Kanban
+- `users.json` (dan `users.json.bak`) — daftar akun & hash password
+- `metadata-schema.json` — skema metadata & palet tag
+- `index.db` — indeks pencarian dokumen SQLite
+
+Contoh backup harian sederhana ke `/var/backups/wekeepit`:
+```bash
+sudo mkdir -p /var/backups/wekeepit
+sudo tar -czf /var/backups/wekeepit/wekeepit-$(date +%F).tar.gz -C /var/lib/wekeepit .
+```
