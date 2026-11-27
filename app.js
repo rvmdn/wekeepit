@@ -705,6 +705,9 @@
 
   // --- INITIALIZATION ---
   async function init() {
+    if (!(window.chrome && window.chrome.webview)) {
+      document.documentElement.classList.add('is-web-browser');
+    }
     setupNativeBridge();
     setupEventListeners();
     await checkAuthStatus();

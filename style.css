@@ -5335,3 +5335,9 @@ body.role-viewer #uploadVaultDocBtn { display: none !important; }
   color: #f1f5f9;
   border-color: rgba(255, 255, 255, 0.3);
 }
+
+/* Web Browser Mode: prevent semi-transparent acrylic body from blending with browser white #ffffff */
+html.is-web-browser,
+html.is-web-browser body.theme-acrylic {
+  background-color: var(--bg-app) !important;
+}
