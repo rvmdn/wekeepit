@@ -5469,3 +5469,64 @@ body.role-viewer #myBoardView .card-action-btn[data-action="delete"] {
 [data-theme="bulletin-board"] .empty-state .empty-desc {
   color: #3f2c1c;
 }
+
+/* Bulletin Board Theme: Warm Sticky-Note / Kraft Paper Surfaces (replace stark white & cold gray) */
+[data-theme="bulletin-board"] .stat-card,
+[data-theme="bulletin-board"] .folder-card,
+[data-theme="bulletin-board"] .file-explorer-section,
+[data-theme="bulletin-board"] .document-browser-panel,
+[data-theme="bulletin-board"] .indexer-metric-card {
+  background: #fef3c7 !important;
+  border: 1px solid rgba(146, 64, 14, 0.26) !important;
+  box-shadow: 0 3px 10px rgba(68, 42, 23, 0.14);
+}
+
+[data-theme="bulletin-board"] .explorer-toolbar,
+[data-theme="bulletin-board"] .indexed-files-table th {
+  background: #fde68a !important;
+  color: #442a17 !important;
+  border-bottom: 1px solid rgba(146, 64, 14, 0.24) !important;
+}
+
+[data-theme="bulletin-board"] .explorer-breadcrumb-bar {
+  background: rgba(180, 83, 9, 0.12) !important;
+  border-bottom: 1px solid rgba(146, 64, 14, 0.2) !important;
+}
+
+[data-theme="bulletin-board"] .indexed-files-table td {
+  background: #fef9c3 !important;
+  color: #292524 !important;
+  border-bottom: 1px solid rgba(146, 64, 14, 0.15) !important;
+}
+
+[data-theme="bulletin-board"] .indexed-files-table tr:hover td {
+  background: #fef08a !important;
+}
+
+[data-theme="bulletin-board"] .indexed-files-table td strong,
+[data-theme="bulletin-board"] .indexed-files-table td code {
+  color: #292524 !important;
+}
+
+[data-theme="bulletin-board"] .explorer-search-box {
+  background: #fffbeb !important;
+  border: 1px solid rgba(146, 64, 14, 0.28) !important;
+}
+
+[data-theme="bulletin-board"] .explorer-search-box input {
+  color: #292524 !important;
+}
+
+[data-theme="bulletin-board"] .explorer-view-toggles {
+  background: rgba(255, 251, 235, 0.75) !important;
+  border: 1px solid rgba(146, 64, 14, 0.24) !important;
+}
+
+[data-theme="bulletin-board"] .explorer-mode-btn {
+  color: #442a17 !important;
+}
+
+[data-theme="bulletin-board"] .explorer-mode-btn.active {
+  background: #b45309 !important;
+  color: #ffffff !important;
+}
